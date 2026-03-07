@@ -7,6 +7,10 @@ This workspace contains a non-invasive Slay the Spire 2 speed-mod toolkit.
 - It keeps first-play presentation settings intact by default.
 - It prepares package artifacts, snapshot and restore reports, test launcher scripts, and a patch target catalog.
 
+Development notes:
+
+- [docs/development/README.md](C:/Users/jidon/source/repos/STS2ModeTest/docs/development/README.md)
+
 ## Projects
 
 - `src/Sts2Speed.Core`
