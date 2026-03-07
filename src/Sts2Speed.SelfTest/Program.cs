@@ -12,6 +12,7 @@ Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVeri
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
 Run("manifest contains expected metadata", TestManifestTemplate, failures);
 Run("materialized package contains launcher assets", TestMaterializePackage, failures);
+Run("native package staging captures missing pck requirement", TestMaterializeNativePackage, failures);
 Run("GUMM game entry is materialized for STS2", TestMaterializeGummGameEntry, failures);
 Run("GUMM loader install writes override settings", TestInstallGummLoader, failures);
 Run("mod path discovery prefers exact log evidence", TestModPathDiscovery, failures);
@@ -218,6 +219,34 @@ static void TestMaterializePackage()
         Assert(gummBase.Contains("func get_full_path(path: String) -> String:", StringComparison.Ordinal), "GUMM base script should expose get_full_path for mod bootstrap scripts.");
         Assert(launcher.Contains("-applaunch 2868840", StringComparison.Ordinal), "Launcher should start the game through Steam applaunch.");
         Assert(result.TestProfiles.Count >= 8, "Expected the packaged test profile catalog.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestMaterializeNativePackage()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var configuration = WorkspaceConfiguration.CreateLocalDefault() with
+        {
+            GamePaths = WorkspaceConfiguration.CreateLocalDefault().GamePaths with
+            {
+                GameDirectory = Path.Combine(root, "game"),
+                ArtifactsRoot = Path.Combine(root, "artifacts"),
+            },
+        };
+
+        var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory, "subdir");
+
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "README.native.txt")), "Native staging package should include a native README.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "Sts2Speed.speed.txt")), "Native staging package should include a text multiplier file.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "Sts2Speed.ModSkeleton.dll")), "Native staging package should include the primary managed payload.");
+        Assert(result.MissingArtifacts.Any(artifact => artifact.RelativePath.EndsWith(".pck", StringComparison.OrdinalIgnoreCase)), "Native staging package should report that a .pck artifact is still missing.");
+        Assert(result.LayoutKind == "subdir", "Native staging package should normalize the requested layout kind.");
     }
     finally
     {

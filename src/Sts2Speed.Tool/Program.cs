@@ -41,6 +41,18 @@ try
                 return 0;
             }
 
+        case "materialize-native-package":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
+                var layoutKind = options.TryGetValue("--layout", out var requestedLayout)
+                    ? requestedLayout
+                    : "subdir";
+                var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, outputRoot, runtimeAssemblyRoot, layoutKind);
+                PrintJson(result);
+                return 0;
+            }
+
         case "materialize-gumm-game-entry":
             {
                 var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
@@ -280,6 +292,7 @@ static void WriteUsage()
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- show-config [--config path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-package [--config path] [--artifacts-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-package [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-native-package [--config path] [--artifacts-root path] [--runtime-assembly-root path] [--layout flat|subdir]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-gumm-game-entry [--config path] [--artifacts-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- deploy-package --mod-root path [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- install-gumm-loader [--config path] [--package-root path] [--gumm-repo-root path]");
