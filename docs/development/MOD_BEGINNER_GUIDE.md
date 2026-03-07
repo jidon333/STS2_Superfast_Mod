@@ -1,185 +1,207 @@
-# STS2 Speed Mod 초보자용 안내
+# STS2 Speed Mod 초보자용 구조 안내
 
-이 문서는 모딩 경험은 적지만 클라이언트 코드 구조를 이해하는 사람을 기준으로, 지금 저장소가 어떤 원리로 동작하는지 설명한다.
+이 문서는 "모딩 개념은 아직 낯설지만, 코드 구조는 빨리 파악하고 싶다"는 사람을 위한 빠른 안내다.
 
-## 1. 이 저장소가 지금 하는 일
+개념부터 길게 읽고 싶으면 먼저 `MODDING_FROM_ZERO.md`를 보는 편이 좋다. 이 문서는 그보다 더 실무적으로 "이 저장소에서 어느 파일이 무슨 역할을 하는가"에 집중한다.
 
-현재 이 저장소는 완성된 “배속 모드 제품”이라기보다 다음 다섯 가지를 묶은 작업 저장소다.
+## 1. 이 저장소가 실제로 하는 일
 
-1. 백업과 복구
+현재 이 저장소는 완성형 배포판 하나만 만드는 프로젝트가 아니다.
+
+다음 다섯 가지를 동시에 담당한다.
+
+1. 백업/복구
 2. Godot `.pck` 생성
 3. STS2 네이티브 모드 패키징
-4. 실제 속도 패치 실험
-5. vanilla 프로필을 modded 프로필로 복구
+4. Harmony 기반 속도 패치
+5. `profileN -> modded/profileN` 진행 복구
 
-즉 “모드가 안전하게 로드되고, 되돌릴 수 있고, 패치를 추가할 수 있고, 저장 데이터도 복구할 수 있는 구조”를 만드는 것이 1차 목적이었다.
+즉 목표는 "속도 모드 본체" 하나만 만드는 게 아니라, **안전하게 배포하고 되돌릴 수 있는 전체 작업 흐름**을 만드는 것이다.
 
-## 2. 슬더스2 모드는 실제로 어떤 구조로 로드되는가
+## 2. 최종 방식은 무엇인가
 
-현재 확인된 구조는 다음과 같다.
+현재 최종 구현 방향은 `STS2 내장 네이티브 로더`다.
 
-1. 게임이 `Slay the Spire 2\\mods` 폴더를 스캔한다.
-2. `.pck`를 발견하면 basename을 구한다.
-3. 같은 basename의 `.dll`을 찾는다.
-4. `.pck` 안의 `res://mod_manifest.json`을 읽는다.
-5. manifest의 `pck_name`이 `.pck` basename과 같아야 한다.
-6. DLL을 로드하고, `ModInitializerAttribute`가 없으면 `Harmony.PatchAll`을 호출한다.
+즉 구조는 다음이다.
 
-즉 커뮤니티에서 본 `pck + dll + txt` 구조는 그냥 편의적 관행이 아니라, 게임 로더 구조와 매우 잘 맞는다.
+```text
+mods 폴더
+  -> .pck 발견
+  -> 같은 basename의 .dll 발견
+  -> mod_manifest.json 확인
+  -> DLL 로드
+  -> Harmony.PatchAll
+  -> Prefix 패치 실행
+```
 
-## 3. 각 파일은 왜 필요한가
+GUMM은 초기에 로더 진입을 검증하기 위한 우회 경로였고, 지금은 fallback / diagnostics 용도로만 의미가 있다.
 
-### `.pck`
+## 3. 실제 배포 파일은 무엇인가
 
-Godot 리소스 팩이다. STS2 로더는 이 파일이 있어야 모드 하나를 정식 단위로 인식한다.
+현재 live `mods` 폴더 기준 핵심 파일은 다음이다.
 
-이 저장소에서는 `build-native-pck` 명령이 공식 Godot `--export-pack` 경로를 이용해서 만든다.
+- `sts2-speed-skeleton.pck`
+- `sts2-speed-skeleton.dll`
+- `Sts2Speed.Core.dll`
+- `Sts2Speed.speed.txt`
 
-### `.dll`
+각 역할:
 
-실제 로직이 들어가는 managed payload다.
+- `.pck`
+  - Godot 모드 패키지 단위
+  - `mod_manifest.json` 포함
+- `sts2-speed-skeleton.dll`
+  - 실제 Harmony 패치 payload
+- `Sts2Speed.Core.dll`
+  - 설정 로더, 백업/복구 공용 로직 등 공통 코드
+- `Sts2Speed.speed.txt`
+  - 기본 배속 설정 파일
 
-현재 `sts2-speed-skeleton.dll` 안에는 Harmony patch 클래스가 들어 있다.
+현재 기본값은 `2.0`이다.
 
-### `Sts2Speed.speed.txt`
+## 4. 핵심 코드 위치
 
-공유 배속 설정 파일이다.
-
-현재는 이 파일에 `1.25`, `2.0`, `0.5` 같은 값을 넣으면, 별도 환경 변수를 주지 않았을 때 다음 세 값의 공통 fallback으로 사용한다.
-
-- `spineTimeScale`
-- `queueWaitScale`
-- `effectDelayScale`
-
-## 4. 코드에서 핵심 파일은 어디인가
-
-### 패키징
+### 패키징 / 배포
 
 - `src/Sts2Speed.ModSkeleton/NativeModPackaging.cs`
 
-하는 일:
+역할:
 
 - 네이티브 `mods` 폴더용 파일 배치
-- `mod_manifest.json` 작성
-- `.pck` 생성용 export project 준비
-- live `mods` 폴더로 복사
+- `mod_manifest.json` 생성
+- `.pck` 생성용 구조 준비
+- live `mods` 폴더 배포
 
 ### 런타임 설정 로더
 
 - `src/Sts2Speed.Core/Configuration/RuntimeSettingsLoader.cs`
 
-하는 일:
+역할:
 
 - `STS2_SPEED_*` 환경 변수 읽기
 - `Sts2Speed.speed.txt` 읽기
-- 명시적 `enabled`가 없을 때 공유 배속 값이 `1.0`이 아니면 자동 활성화
+- 공통 fallback 배속 결정
+- 명시적 `enabled`가 없어도 배속 값이 `1.0`이 아니면 자동 활성화
 
-### 모드 의존성 로더
+### 추가 DLL resolve
 
 - `src/Sts2Speed.ModSkeleton/Runtime/ModAssemblyResolver.cs`
 
-왜 필요한가:
+역할:
 
-STS2는 매칭 DLL 하나는 로드하지만, 그 DLL이 참조하는 추가 DLL을 자동으로 `mods` 폴더에서 찾아주지 않았다. 그래서 `Sts2Speed.Core.dll`을 모드 폴더 기준으로 직접 resolve 하도록 넣었다.
+- 모드 DLL이 자기 옆 폴더의 `Sts2Speed.Core.dll`을 찾게 함
 
-### 패치 컨텍스트
+### 패치 계산 / 로깅
 
 - `src/Sts2Speed.ModSkeleton/Runtime/RuntimePatchContext.cs`
+- `src/Sts2Speed.Core/Configuration/SpeedScaleMath.cs`
 
-하는 일:
+역할:
 
-- 현재 런타임 설정 캐시
-- combat-only 조건 판단
-- 스케일 적용
-- `sts2speed.runtime.log` 기록
+- 현재 설정 캐시
+- 전투 중일 때만 적용하는 `combatOnly` 판단
+- speed multiplier 계산
+- `mods\sts2speed.runtime.log` 기록
 
 ### 실제 Harmony 패치
 
 - `src/Sts2Speed.ModSkeleton/Runtime/SpeedPatches.cs`
 
-현재 들어간 패치:
+현재 붙어 있는 패치:
 
 - `MegaAnimationState.SetTimeScale`
 - `MegaTrackEntry.SetTimeScale`
 - `Cmd.CustomScaledWait`
 - `CombatState.GodotTimerTask`
 
-## 5. 왜 이 메서드들을 건드리는가
+## 5. 지금 실제로 바꾸는 값은 무엇인가
 
-### `MegaAnimationState.SetTimeScale`, `MegaTrackEntry.SetTimeScale`
+현재는 "게임 설정 프로퍼티를 저장 파일에 써넣는 방식"이 아니라 **메서드 인자를 런타임에 바꾸는 방식**이다.
 
-Spine 애니메이션 배속 진입점이다. 전투 중에만 `spineTimeScale`을 곱해서 애니메이션 속도를 올린다.
+즉 지금 직접 바꾸는 값은 대체로 다음과 같다.
 
-### `Cmd.CustomScaledWait`
+- `scale`
+- `fastSeconds`
+- `standardSeconds`
+- `timeSec`
 
-전투 턴 배너, 카드 턴 종료 처리 등 “의도적으로 넣은 대기시간”을 줄이기 좋은 지점이다.
+예를 들면:
 
-현재는 `queueWaitScale`을 곱한다.
+```csharp
+[HarmonyPrefix]
+private static void Prefix(ref float scale)
+{
+    RuntimePatchContext.TryApplySpineScale(ref scale);
+}
+```
 
-### `CombatState.GodotTimerTask`
+즉 원본 함수 전에 `scale` 값을 바꾸고, 원본 함수는 그 변경된 값을 받는다.
 
-Godot timer 기반의 비동기 지연을 줄이는 후보다.
+## 6. `2.0`은 현재 정확히 어떤 의미인가
 
-현재는 `effectDelayScale`을 곱한다. 체감 기여도는 아직 실기 검증이 더 필요하다.
+초기 구현에는 버그가 있었다.
 
-## 6. 왜 `ActionExecutor`를 아직 안 건드렸는가
+- Spine 애니메이션은 `2.0`에서 빨라졌지만
+- wait / timer는 `2.0`에서 더 길어졌다
 
-`ActionExecutor.ExecuteActions`는 더 공격적인 속도 모드에는 유력하지만, 잘못 건드리면 액션 큐 의미 자체를 바꿔버릴 수 있다.
+지금은 이를 고쳤다.
 
-지금 단계에서는 다음 순서를 택했다.
+현재 의미:
 
-1. 로더가 안정적으로 뜨는지 확인
-2. 명백한 배속 메서드부터 패치
-3. 전투 실기에서 부족하면 큐 자체로 내려간다
+- `2.0` -> 애니메이션은 2배속, wait / timer는 절반 길이
+- `0.5` -> 애니메이션은 반속, wait / timer는 2배 길이
 
-즉 아직은 보수적으로 접근 중이다.
+공식:
 
-## 7. 모드를 켜면 왜 진행이 초기화된 것처럼 보이는가
+```text
+animation = animation * multiplier
+duration = duration / multiplier
+```
 
-이 부분이 현재 가장 중요하다.
+자세한 설명은 `SPEED_SEMANTICS.md`에 있다.
 
-모드가 하나라도 로드되면 STS2는 저장 경로를 `modded/profileN`으로 분리한다. vanilla 진행은 원래 `profileN`에 남아 있고, modded 쪽이 비어 있으면 게임은 새 프로필처럼 보인다.
+## 7. 왜 진행이 초기화된 것처럼 보였는가
 
-즉 “데이터가 사라진 것”이 아니라 “게임이 다른 슬롯을 보고 있는 것”에 가깝다.
+이건 실제로 겪었던 문제다.
 
-실제 복구 방법은 다음과 같다.
+모드가 하나라도 로드되면 STS2는 저장 경로를 `modded/profileN`으로 분리한다.
 
-1. 게임 종료
-2. `profile1` 내용을 `modded/profile1`에 복제
-3. 모드 실행
+즉:
 
-이 저장소에서는 이 과정을 `sync-modded-profile` 명령으로 자동화했다. 이 명령은 기존 `modded/profile1`을 먼저 백업한 다음, `profile1` 전체를 미러링한다.
+- 바닐라 저장은 `profileN`
+- 모드 저장은 `modded/profileN`
 
-## 8. 지금 어디까지 검증됐는가
+그래서 `modded/profileN`이 비어 있으면 게임은 새 프로필처럼 보인다.
 
-실기 기준으로 확정된 것은 다음이다.
+복구는 다음 명령으로 자동화했다.
 
-- `.pck`를 게임이 찾는다
-- matching `.dll`을 로드한다
+```powershell
+dotnet run --project src/Sts2Speed.Tool -- sync-modded-profile
+```
+
+이 명령은:
+
+1. 기존 `modded/profileN` 백업
+2. `profileN` 전체를 `modded/profileN`으로 복제
+3. 보고서 JSON 생성
+
+## 8. 지금까지 검증된 것
+
+- `.pck`를 게임이 실제로 찾는다
+- matching `.dll`을 실제로 로드한다
 - `Harmony.PatchAll`이 실제로 호출된다
-- 모드가 켜진 상태로 메인 메뉴까지 진입한다
-- `Sts2Speed.speed.txt = 1.25` 를 넣으면 모드가 활성화된 설정으로 인식된다
-- vanilla `profile1`을 `modded/profile1`로 복제하면 진행 데이터가 복구된다
+- 모드 켠 상태로 메인 메뉴까지 진입한다
+- `Sts2Speed.speed.txt` 값이 런타임 설정으로 반영된다
+- 진행 데이터를 `profileN -> modded/profileN`으로 복구할 수 있다
+- speed semantics는 self-test로 고정했다
 
-아직 직접 확인하지 못한 것은 다음이다.
+## 9. 아직 남은 것
 
-- 전투 한가운데서 `spine time scale applied` 로그가 찍히는지
-- `queueWaitScale`, `effectDelayScale` 체감이 원하는 수준인지
+- 실제 전투 플레이에서 체감 강도 확인
+- `CombatManager.WaitForActionThenEndTurn`
+- `CombatManager.WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`
+- `ActionExecutor.ExecuteActions`
 
-## 9. 왜 GUMM을 완전히 버리지 않았는가
+이 후보 훅은 아직 미구현이거나 추가 검증이 필요하다.
 
-GUMM은 이제 최종 구현 경로는 아니지만, 두 가지 용도로 여전히 가치가 있다.
-
-1. 게임 내장 모드 경로가 갑자기 깨졌을 때 fallback
-2. 초기 부트스트랩/로그 진단
-
-다만 지금 최종 구현 목표는 분명히 STS2 내장 네이티브 로더 쪽이다.
-
-## 10. 직접 만져볼 때 가장 중요한 포인트
-
-- 기본 rollback은 항상 snapshot 기준으로 한다.
-- `mods` 폴더에 들어가는 파일명은 basename 규칙이 매우 중요하다.
-- `mod_manifest.json`의 `pck_name`은 `.pck` 확장자를 빼야 한다.
-- `Sts2Speed.Core.dll` 같은 추가 DLL은 그냥 복사만 하면 충분하지 않을 수 있다. resolver가 필요할 수 있다.
-- 모드 사용 시 진행이 새로 시작된 것처럼 보이면 `profileN`과 `modded/profileN`을 먼저 비교한다.
-- 전투 체감까지 보려면 이제 실제 플레이 검증이 필요하다.
+즉 지금은 "네이티브 모드 로더 + 첫 payload + 복구/배포 루트"까지는 끝났고, 더 공격적인 SuperFastMode 재현은 다음 단계다.

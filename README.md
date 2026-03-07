@@ -14,11 +14,15 @@
 - 모드가 켜지면 저장 경로는 `user://steam/<계정>/modded/profile1`로 분리된다.
 - 이 때문에 모드를 처음 켰을 때 진행이 초기화된 것처럼 보일 수 있다.
 - `sync-modded-profile` 명령으로 `profile1 -> modded/profile1` 복구를 자동화했다. 기존 modded 프로필은 먼저 백업한다.
+- 기본 배속은 현재 `2.0`이다.
 - 현재 실제 패치는 들어가 있다.
   - `MegaAnimationState.SetTimeScale`
   - `MegaTrackEntry.SetTimeScale`
   - `Cmd.CustomScaledWait`
   - `CombatState.GodotTimerTask`
+- 배속 의미는 현재 고정됐다.
+  - 애니메이션 배속은 `x multiplier`
+  - wait / timer 지속시간은 `/ multiplier`
 - 다만 자동화로 전투까지 밀어 넣지는 않았기 때문에, “전투 중 체감 속도 변화”는 아직 사용자가 직접 플레이로 최종 확인해야 한다.
 
 ## 지금 되는 것
@@ -64,7 +68,9 @@ dotnet run --project src/Sts2Speed.Tool -- deploy-native-package --layout flat
 ## 문서
 
 - [개발 문서 안내](docs/development/README.md)
+- [모딩 0부터 설명](docs/development/MODDING_FROM_ZERO.md)
 - [모드 로딩 방식 비교](docs/development/MOD_LOADING_STRATEGIES.md)
 - [초보자용 구조 설명](docs/development/MOD_BEGINNER_GUIDE.md)
 - [로드 체인](docs/development/LOAD_CHAIN.md)
+- [배속 해석](docs/development/SPEED_SEMANTICS.md)
 - [작업 기록](docs/development/WORKLOG.md)
