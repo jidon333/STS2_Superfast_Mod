@@ -1,0 +1,7 @@
+bin/
+obj/
+artifacts/snapshots/
+artifacts/package-layout/
+artifacts/*
+!artifacts/.gitkeep
+STS2_Superfast_Mod/

@@ -1,0 +1,20 @@
+{
+  "gamePaths": {
+    "gameDirectory": "D:\\Program Files (x86)\\Steam\\steamapps\\common\\Slay the Spire 2",
+    "userDataRoot": "C:\\Users\\jidon\\AppData\\Roaming\\SlayTheSpire2",
+    "steamAccountId": "76561198206882255",
+    "profileIndex": 1,
+    "artifactsRoot": "artifacts"
+  },
+  "settings": {
+    "enabled": false,
+    "fastModeOverride": null,
+    "animationScale": 1.0,
+    "spineTimeScale": 1.0,
+    "queueWaitScale": 1.0,
+    "effectDelayScale": 1.0,
+    "combatOnly": true,
+    "preserveGameSettings": true,
+    "verboseLogging": false
+  }
+}
