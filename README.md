@@ -74,3 +74,4 @@ dotnet run --project src/Sts2Speed.Tool -- deploy-native-package --layout flat
 - [로드 체인](docs/development/LOAD_CHAIN.md)
 - [배속 해석](docs/development/SPEED_SEMANTICS.md)
 - [작업 기록](docs/development/WORKLOG.md)
+- [상세 조사 로그](docs/development/DETAILED_INVESTIGATION_LOG.md)
