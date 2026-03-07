@@ -692,3 +692,164 @@ duration = duration / multiplier
 5. 모드 적용 후 진행이 사라진 것처럼 보이면 `profileN`과 `modded/profileN`을 비교해라.
 6. speed multiplier는 animation과 duration에 같은 방식으로 적용하면 안 된다.
 7. 실제 체감 품질은 결국 전투 플레이 검증이 필요하다.
+
+## 27. 남은 훅을 다시 디컴파일한 이유
+
+실제 플레이 체감이 이미 꽤 자연스러웠는데도, 초기 문서에는 여전히 다음 후보가 "다음 단계에서 붙일 만한 훅"처럼 남아 있었다.
+
+- `CombatManager.WaitForActionThenEndTurn`
+- `CombatManager.WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`
+- `ActionExecutor.ExecuteActions`
+
+이 상태는 좋지 않았다.
+
+- 사용자 입장에서는 "왜 아직 안 붙였지?"가 불명확했고
+- 다음 AI 입장에서는 "그냥 추가 구현하면 되는 TODO"처럼 보일 수 있었다
+
+그래서 이 셋이 정말 "남은 대기시간 훅"인지, 아니면 위험한 동기화 지점인지 다시 디컴파일로 확인했다.
+
+## 28. `CombatManager` 재조사 결과
+
+`ilspycmd`로 `MegaCrit.Sts2.Core.Combat.CombatManager`를 다시 열었다.
+
+핵심 관찰:
+
+### `WaitForActionThenEndTurn`
+
+구조 요약:
+
+```csharp
+await action.CompletionTask;
+await AfterAllPlayersReadyToEndTurn(actionDuringEnemyTurn);
+```
+
+여기서 이미 첫 판단이 바뀌었다.
+
+이건 단순 `Task.Delay` 계열이 아니라 "특정 action이 끝날 때까지" 기다리는 함수다.
+
+### `AfterAllPlayersReadyToEndTurn`
+
+이 함수 안에서는 다시:
+
+```csharp
+await WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction();
+await EndPlayerTurnPhaseOneInternal();
+```
+
+즉 turn end 직전 동기화 관문이다.
+
+### `WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`
+
+여기서는:
+
+- 현재 action이 player-driven인지 확인
+- 필요하면 `TaskCompletionSource`를 생성
+- `AfterActionExecuted` 이벤트를 구독
+- 다음 ready action이 없거나 non-player-driven이 될 때까지 관찰
+
+즉 이것도 단순 sleep이 아니라 queue state barrier다.
+
+### 이 조사로 얻은 결론
+
+처음 이름만 보고 "queue drain wait 줄이기 좋은 곳"이라고 생각했던 판단은 너무 낙관적이었다.
+
+이 함수들을 직접 빠르게 만들면 얻는 것은 "덜 기다림"이 아니라, 잘못하면:
+
+- phase 전환이 너무 빨라짐
+- player-driven action 경계 붕괴
+- soft lock
+- 시각적 자연스러움 저하
+
+즉 이쪽은 "보류 이유가 단순 미구현이 아니라 안전성"이라고 정리해야 맞다.
+
+## 29. `ActionExecutor` 재조사 결과
+
+다음으로 `MegaCrit.Sts2.Core.GameActions.ActionExecutor`의 `ExecuteActions()`를 다시 열었다.
+
+구조 요약:
+
+1. ready action을 찾는다.
+2. `WaitForUnpause()`를 기다린다.
+3. action을 실행한다.
+4. action task가 끝날 때까지 frame 단위로 기다린다.
+5. `CombatManager.Instance.CheckWinCondition()`를 호출한다.
+6. 다음 action으로 넘어간다.
+
+이 함수는 이름보다 훨씬 더 핵심에 있다.
+
+즉 "전투 대기시간을 조금 줄일 수 있는 함수"가 아니라:
+
+- 액션 실행 루프
+- 프레임 진행 경계
+- 승패 체크 타이밍
+
+을 모두 포함한다.
+
+여기까지 보고 나면 판단은 명확하다.
+
+- 이 함수를 건드리면 더 공격적인 템포는 만들 수 있다
+- 하지만 지금 단계에서 자연스러운 모드를 유지하려면 가장 나중에 봐야 한다
+
+## 30. `effectDelayScale`가 왜 체감상 약할 수 있는가
+
+`effectDelayScale`는 현재 이미 구현되어 있는데도, 런타임 로그에서 자주 보이지 않았다.
+
+그래서 `CombatState.GodotTimerTask(double timeSec)`도 다시 확인했다.
+
+본체는 다음과 같이 매우 단순했다.
+
+```csharp
+SceneTreeTimer sceneTreeTimer = ((SceneTree)Engine.GetMainLoop()).CreateTimer(timeSec);
+await sceneTreeTimer.ToSignal(sceneTreeTimer, SceneTreeTimer.SignalName.Timeout);
+```
+
+이건 "timer helper" 자체는 맞지만, 그 자체로 모든 전투 연출이 여길 지나간다는 뜻은 아니다.
+
+실제로 확인한 호출 맥락 중 하나는 spawn timeout 계열이었다.
+
+그래서 현재 해석은 다음이 맞다.
+
+- `effectDelayScale`는 죽은 설정이 아니다
+- 하지만 현재 후크 하나만으로는 플레이 체감 대부분을 설명하지 못할 수 있다
+- 즉 "실전 hit가 적다"는 진단은 코드가 안 붙어서가 아니라 훅 지점 자체의 범위 문제일 가능성이 높다
+
+## 31. 구현을 안 한 것도 결정이었다
+
+재조사 후 선택지는 두 개였다.
+
+1. `CombatManager` / `ActionExecutor`까지 바로 패치해 본다
+2. 지금의 자연스러운 체감을 우선 보존하고, 보류 이유를 문서화한다
+
+이번에는 2번을 택했다.
+
+이유:
+
+- 이미 플레이 체감이 "자연스럽다"는 피드백이 있었다
+- 남은 후보들은 단순 duration hook이 아니라 queue/core loop였다
+- 여기서 더 욕심내면 개선보다 회귀 가능성이 더 크다고 판단했다
+
+즉 "수정하지 않음"도 이번엔 명시적인 설계 결정이다.
+
+## 32. 실제 사용되지 않는 코드 제거
+
+마지막으로 저장소 전체를 훑어, 최종 네이티브 경로와 무관한 scaffold를 걷어냈다.
+
+제거한 것:
+
+- `fastModeOverride`
+- `animationScale`
+- `preserveGameSettings`
+- `verboseLogging`
+- GUMM 전용 CLI/패키징 코드
+- 예전 skeleton dry-run 패키징 코드
+- 관련 self-test
+
+남긴 것:
+
+- 네이티브 `mods + pck + dll + txt` 패키징
+- runtime Harmony payload
+- snapshot / restore / verify
+- `sync-modded-profile`
+- 조사 문서와 역사 기록
+
+결과적으로 지금 저장소는 "조사 흔적은 문서로 남기고, 실행 가능한 코드는 최종 경로만 남긴 상태"에 가깝다.

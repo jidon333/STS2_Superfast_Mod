@@ -10,15 +10,13 @@ public sealed record RuntimeSpeedSettings
 
     public bool Enabled { get; init; }
 
-    public double SpineTimeScale { get; init; } = 1.0;
+    public double SpineTimeScale { get; init; } = 2.0;
 
-    public double QueueWaitScale { get; init; } = 1.0;
+    public double QueueWaitScale { get; init; } = 2.0;
 
-    public double EffectDelayScale { get; init; } = 1.0;
+    public double EffectDelayScale { get; init; } = 2.0;
 
     public bool CombatOnly { get; init; } = true;
-
-    public bool VerboseLogging { get; init; }
 
     public IReadOnlyList<string> Sources { get; init; } = Array.Empty<string>();
 
@@ -65,7 +63,6 @@ public static class RuntimeSettingsLoader
             QueueWaitScale = settings.QueueWaitScale,
             EffectDelayScale = settings.EffectDelayScale,
             CombatOnly = settings.CombatOnly,
-            VerboseLogging = settings.VerboseLogging,
             Sources = sources.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Warnings = warnings,
         };
@@ -76,11 +73,9 @@ public static class RuntimeSettingsLoader
         return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
             [EnvironmentOverrideNames.Enabled] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.Enabled),
-            [EnvironmentOverrideNames.AnimationScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.AnimationScale),
             [EnvironmentOverrideNames.SpineTimeScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.SpineTimeScale),
             [EnvironmentOverrideNames.QueueWaitScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.QueueWaitScale),
             [EnvironmentOverrideNames.EffectDelayScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.EffectDelayScale),
-            [EnvironmentOverrideNames.FastModeOverride] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.FastModeOverride),
         };
     }
 

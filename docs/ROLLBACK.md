@@ -47,5 +47,6 @@ If one of these happens:
 
 ## Deployment reminder
 
-- Confirm the actual mod scan directory before running `deploy-package --mod-root ...`.
-- If `discover-mod-path` cannot produce an exact path from logs, verify the path in the in-game Modding UI first.
+- The current workspace assumes the native STS2 route: `<game dir>\mods`.
+- Use `build-native-pck` first, then `deploy-native-package`.
+- Do not copy files into the live install while the game is running.

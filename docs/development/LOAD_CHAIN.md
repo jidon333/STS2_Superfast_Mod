@@ -121,7 +121,23 @@ internal static void Initialize()
 
 즉 지금은 "전역 time_scale"을 바꾸는 방식이 아니라 **개별 메서드 인자 조정형 패치**다.
 
-## 10. 모드 저장 경로 분리
+## 10. 왜 여기서 멈췄는가
+
+현재 남아 있는 후보:
+
+- `CombatManager.WaitForActionThenEndTurn`
+- `CombatManager.WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`
+- `ActionExecutor.ExecuteActions`
+
+이 셋은 이름만 보면 더 빠르게 만들기 좋아 보이지만, 디컴파일 결과 실제로는 단순 duration helper가 아니라 전투 큐 동기화와 action completion 루프에 가깝다.
+
+즉 현재는 "시간 인자"에 가까운 메서드만 패치하고, "동기화 조건"에 가까운 메서드는 일부러 보류했다.
+
+`effectDelayScale` 역시 실제로는 `CombatState.GodotTimerTask(double)` 한 지점만 잡고 있기 때문에, 설정은 살아 있어도 전투 모든 연출을 대표하지는 않는다.
+
+자세한 해설은 `PENDING_HOOKS_AND_RISKS.md`에 있다.
+
+## 11. 모드 저장 경로 분리
 
 모드가 하나라도 로드되면 게임은 `modded/profileN` 쪽 저장 경로를 사용한다.
 
@@ -137,7 +153,7 @@ internal static void Initialize()
 dotnet run --project src/Sts2Speed.Tool -- sync-modded-profile
 ```
 
-## 11. 로그 확인 포인트
+## 12. 로그 확인 포인트
 
 게임 로그에서 확인할 수 있는 신호:
 

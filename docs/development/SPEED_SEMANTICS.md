@@ -36,6 +36,11 @@
 adjustedDuration = originalDuration / speedMultiplier
 ```
 
+주의할 점:
+
+- `queueWaitScale`는 현재 `Cmd.CustomScaledWait(...)`에 직접 연결되어 있어서 체감에 비교적 잘 보인다.
+- `effectDelayScale`는 현재 `CombatState.GodotTimerTask(...)` 한 지점만 잡고 있으므로, 설정이 살아 있어도 모든 전투 연출에 동일하게 드러나지는 않을 수 있다.
+
 ## 왜 이렇게 바꿨는가
 
 초기 구현은 `Sts2Speed.speed.txt` 값을 Spine, queue wait, effect delay에 모두 그대로 곱했다.

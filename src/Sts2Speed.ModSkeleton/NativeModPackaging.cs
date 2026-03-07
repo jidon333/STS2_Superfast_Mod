@@ -1,6 +1,7 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Sts2Speed.Core.Configuration;
-using System.Diagnostics;
 
 namespace Sts2Speed.ModSkeleton;
 
@@ -79,29 +80,12 @@ public static partial class SpeedModEntryPoint
         var warnings = new List<string>
         {
             "Native STS2 layout is inferred from community examples and local binary strings.",
-            "The live-verified GUMM path remains available as a fallback and diagnostics route.",
             "Use build-native-pck to materialize the Godot resource pack before live deployment.",
         };
-
-        files.Add(WriteNativeTextFile(
-            packageRoot,
-            "mod_manifest.json",
-            CreateNativeManifestJson(descriptor),
-            "generated"));
-        files.Add(WriteNativeTextFile(
-            packageRoot,
-            "README.native.txt",
-            BuildNativePackageReadme(configuration, normalizedLayout),
-            "generated"));
         files.Add(WriteNativeTextFile(
             packageRoot,
             "Sts2Speed.speed.txt",
-            "2.0" + Environment.NewLine,
-            "generated"));
-        files.Add(WriteNativeTextFile(
-            packageRoot,
-            "native-loader-hints.json",
-            BuildNativeLoaderHintsJson(descriptor, normalizedLayout),
+            BuildSharedSpeedFileContents(configuration.Settings, warnings),
             "generated"));
 
         var primaryAssemblySourcePath = Path.Combine(runtimeAssemblyRoot, "Sts2Speed.ModSkeleton.dll");
@@ -326,72 +310,6 @@ public static partial class SpeedModEntryPoint
         return new NativePackageFile(relativePath, outputPath, sourceKind, "copied");
     }
 
-    private static string BuildNativePackageReadme(WorkspaceConfiguration configuration, string layoutKind)
-    {
-        var lines = new List<string>
-        {
-            "STS2 Native Mods-Folder Staging Package",
-            string.Empty,
-            $"Layout kind: {layoutKind}",
-            $"Game directory: {configuration.GamePaths.GameDirectory}",
-            $"Expected native mods root: {Path.Combine(configuration.GamePaths.GameDirectory, "mods")}",
-            string.Empty,
-            "Community-observed shape:",
-            "  - mods/<something>.pck",
-            "  - mods/<something>.dll",
-            "  - mods/<something>.txt",
-            string.Empty,
-            "This workspace can now create the .pck with build-native-pck.",
-            "Live validation depends on the matching .dll, mod_manifest.json, and user consent for native mods loading.",
-            string.Empty,
-            "Why this package still exists:",
-            "  - it fixes the target folder layout",
-            "  - it fixes the text-config convention for the future payload",
-            "  - it keeps the native package reproducible before copying into the live mods folder",
-            string.Empty,
-            "Current config convention:",
-            "  - Sts2Speed.speed.txt contains a single floating-point multiplier",
-            "  - Example values: 2.0, 3.0, 0.5",
-            "  - 2.0 means x2 animation speed and half-duration waits/timers",
-            "  - STS2_SPEED_SPINE_TIME_SCALE, STS2_SPEED_QUEUE_WAIT_SCALE, STS2_SPEED_EFFECT_DELAY_SCALE override the shared multiplier",
-        };
-
-        return string.Join(Environment.NewLine, lines);
-    }
-
-    private static string BuildNativeLoaderHintsJson(SpeedModDescriptor descriptor, string layoutKind)
-    {
-        var manifestPckName = Path.GetFileNameWithoutExtension(descriptor.PckName);
-        var document = new
-        {
-            approach = "native-mods-folder",
-            layoutKind,
-            expectedSignals = new[]
-            {
-                "TryLoadModFromPck",
-                "LoadMods",
-                "ModsDirectory",
-                "SteamWorkshop",
-                "ModInitializerAttribute",
-            },
-            inferredPackageShape = new
-            {
-                modsRoot = "Slay the Spire 2/mods",
-                pckFileName = descriptor.PckName,
-                manifestPckName,
-                assemblyName = descriptor.PckName.Replace(".pck", ".dll", StringComparison.OrdinalIgnoreCase),
-                primaryAssemblies = new[]
-                {
-                    descriptor.PckName.Replace(".pck", ".dll", StringComparison.OrdinalIgnoreCase),
-                    "Sts2Speed.Core.dll",
-                },
-                textConfig = "Sts2Speed.speed.txt",
-            },
-        };
-
-        return JsonSerializer.Serialize(document, JsonOptions);
-    }
-
     private static string CreateNativeManifestJson(SpeedModDescriptor descriptor)
     {
         var manifest = new
@@ -404,6 +322,22 @@ public static partial class SpeedModEntryPoint
         };
 
         return JsonSerializer.Serialize(manifest, JsonOptions);
+    }
+
+    private static string BuildSharedSpeedFileContents(SpeedModSettings settings, ICollection<string> warnings)
+    {
+        if (!AreEquivalent(settings.SpineTimeScale, settings.QueueWaitScale)
+            || !AreEquivalent(settings.SpineTimeScale, settings.EffectDelayScale))
+        {
+            warnings.Add("settings.spineTimeScale, queueWaitScale, effectDelayScale differ. Sts2Speed.speed.txt can store only one shared multiplier, so the packaged default uses spineTimeScale.");
+        }
+
+        return settings.SpineTimeScale.ToString("0.###", CultureInfo.InvariantCulture) + Environment.NewLine;
+    }
+
+    private static bool AreEquivalent(double left, double right)
+    {
+        return Math.Abs(left - right) < 0.0001;
     }
 
     private static void RecreateDirectory(string path)

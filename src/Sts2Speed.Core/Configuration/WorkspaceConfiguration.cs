@@ -92,10 +92,6 @@ public sealed record SpeedModSettings
 {
     public bool Enabled { get; init; }
 
-    public string? FastModeOverride { get; init; }
-
-    public double AnimationScale { get; init; }
-
     public double SpineTimeScale { get; init; }
 
     public double QueueWaitScale { get; init; }
@@ -104,21 +100,13 @@ public sealed record SpeedModSettings
 
     public bool CombatOnly { get; init; }
 
-    public bool PreserveGameSettings { get; init; }
-
-    public bool VerboseLogging { get; init; }
-
     public static SpeedModSettings Defaults { get; } = new SpeedModSettings
     {
         Enabled = false,
-        FastModeOverride = null,
-        AnimationScale = 1.0,
-        SpineTimeScale = 1.0,
-        QueueWaitScale = 1.0,
-        EffectDelayScale = 1.0,
+        SpineTimeScale = 2.0,
+        QueueWaitScale = 2.0,
+        EffectDelayScale = 2.0,
         CombatOnly = true,
-        PreserveGameSettings = true,
-        VerboseLogging = false,
     };
 
     public SpeedModSettings With(PartialSpeedModSettings? partial)
@@ -131,38 +119,10 @@ public sealed record SpeedModSettings
         return this with
         {
             Enabled = partial.Enabled ?? Enabled,
-            FastModeOverride = NormalizeFastModeOverride(partial.FastModeOverride, FastModeOverride),
-            AnimationScale = partial.AnimationScale ?? AnimationScale,
             SpineTimeScale = partial.SpineTimeScale ?? SpineTimeScale,
             QueueWaitScale = partial.QueueWaitScale ?? QueueWaitScale,
             EffectDelayScale = partial.EffectDelayScale ?? EffectDelayScale,
             CombatOnly = partial.CombatOnly ?? CombatOnly,
-            PreserveGameSettings = partial.PreserveGameSettings ?? PreserveGameSettings,
-            VerboseLogging = partial.VerboseLogging ?? VerboseLogging,
-        };
-    }
-
-    public static string? NormalizeFastModeOverride(string? candidate, string? fallback = null)
-    {
-        if (candidate is null)
-        {
-            return fallback;
-        }
-
-        var normalized = candidate.Trim();
-        if (normalized.Length == 0)
-        {
-            return null;
-        }
-
-        normalized = normalized.ToLowerInvariant();
-        return normalized switch
-        {
-            "none" => "none",
-            "normal" => "normal",
-            "fast" => "fast",
-            "instant" => "instant",
-            _ => fallback,
         };
     }
 }
@@ -171,10 +131,6 @@ public sealed record PartialSpeedModSettings
 {
     public bool? Enabled { get; init; }
 
-    public string? FastModeOverride { get; init; }
-
-    public double? AnimationScale { get; init; }
-
     public double? SpineTimeScale { get; init; }
 
     public double? QueueWaitScale { get; init; }
@@ -182,10 +138,6 @@ public sealed record PartialSpeedModSettings
     public double? EffectDelayScale { get; init; }
 
     public bool? CombatOnly { get; init; }
-
-    public bool? PreserveGameSettings { get; init; }
-
-    public bool? VerboseLogging { get; init; }
 }
 
 public sealed record SettingsLoadResult

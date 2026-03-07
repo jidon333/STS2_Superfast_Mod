@@ -4,11 +4,9 @@ public static class EnvironmentOverrideNames
 {
     public const string Prefix = "STS2_SPEED_";
     public const string Enabled = Prefix + "ENABLED";
-    public const string AnimationScale = Prefix + "ANIMATION_SCALE";
     public const string SpineTimeScale = Prefix + "SPINE_TIME_SCALE";
     public const string QueueWaitScale = Prefix + "QUEUE_WAIT_SCALE";
     public const string EffectDelayScale = Prefix + "EFFECT_DELAY_SCALE";
-    public const string FastModeOverride = Prefix + "FAST_MODE_OVERRIDE";
 }
 
 public sealed record EnvironmentOverrideResult
@@ -30,11 +28,9 @@ public static class EnvironmentOverrideReader
         var settings = new PartialSpeedModSettings
         {
             Enabled = ReadBoolean(map, EnvironmentOverrideNames.Enabled, applied, warnings),
-            AnimationScale = ReadDouble(map, EnvironmentOverrideNames.AnimationScale, applied, warnings),
             SpineTimeScale = ReadDouble(map, EnvironmentOverrideNames.SpineTimeScale, applied, warnings),
             QueueWaitScale = ReadDouble(map, EnvironmentOverrideNames.QueueWaitScale, applied, warnings),
             EffectDelayScale = ReadDouble(map, EnvironmentOverrideNames.EffectDelayScale, applied, warnings),
-            FastModeOverride = ReadFastMode(map, EnvironmentOverrideNames.FastModeOverride, applied, warnings),
         };
 
         return new EnvironmentOverrideResult
@@ -85,27 +81,5 @@ public static class EnvironmentOverrideReader
 
         warnings.Add($"Ignored {name}: expected number but received '{raw}'.");
         return null;
-    }
-
-    private static string? ReadFastMode(
-        IReadOnlyDictionary<string, string?> environment,
-        string name,
-        ICollection<string> applied,
-        ICollection<string> warnings)
-    {
-        if (!environment.TryGetValue(name, out var raw) || string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        var normalized = SpeedModSettings.NormalizeFastModeOverride(raw);
-        if (normalized is null && !string.IsNullOrWhiteSpace(raw))
-        {
-            warnings.Add($"Ignored {name}: unsupported value '{raw}'.");
-            return null;
-        }
-
-        applied.Add(name);
-        return normalized;
     }
 }

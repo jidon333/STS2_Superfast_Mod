@@ -1,0 +1,22 @@
+STS2 Superfast Mod 설치법
+
+1. Slay the Spire 2 설치 폴더에 mods 폴더를 만든다.
+   예: D:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods
+
+2. 이 폴더 안의 파일 4개를 mods 폴더에 넣는다.
+   - sts2-speed-skeleton.pck
+   - sts2-speed-skeleton.dll
+   - Sts2Speed.Core.dll
+   - Sts2Speed.speed.txt
+
+3. Sts2Speed.speed.txt 안 숫자가 기본 배속이다.
+   - 2.0 = 2배속
+   - 3.0 = 3배속
+   - 0.5 = 반속
+
+4. 게임을 실행한다.
+
+주의:
+- 모드를 처음 켜면 진행 데이터가 비어 보일 수 있다.
+- 이 경우 AppData\Roaming\SlayTheSpire2\steam\<계정>\profile1 내용을 modded\profile1로 복사하면 된다.
+- 게임이 실행 중일 때는 mods 폴더 파일을 교체하지 않는 편이 안전하다.

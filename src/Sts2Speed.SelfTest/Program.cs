@@ -5,21 +5,15 @@ using Sts2Speed.ModSkeleton;
 var failures = new List<string>();
 
 Run("environment overrides win over config", TestEnvironmentOverrides, failures);
-Run("missing fast mode env override is ignored", TestMissingFastModeOverride, failures);
 Run("runtime settings infer enablement from shared speed file", TestRuntimeSettingsSharedMultiplier, failures);
 Run("speed multiplier semantics shrink wait durations", TestSpeedMultiplierSemantics, failures);
-Run("preserveGameSettings blocks live mutation", TestMutationPolicy, failures);
 Run("snapshot planner includes required files", TestSnapshotPlanner, failures);
 Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVerification, failures);
 Run("strict restore removes files created after snapshot", TestStrictRestoreRemovesCreatedFiles, failures);
 Run("modded profile sync mirrors vanilla profile after backing up destination", TestModdedProfileSync, failures);
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
-Run("manifest contains expected metadata", TestManifestTemplate, failures);
-Run("materialized package contains launcher assets", TestMaterializePackage, failures);
 Run("native package staging captures missing pck requirement", TestMaterializeNativePackage, failures);
-Run("GUMM game entry is materialized for STS2", TestMaterializeGummGameEntry, failures);
-Run("GUMM loader install writes override settings", TestInstallGummLoader, failures);
-Run("mod path discovery prefers exact log evidence", TestModPathDiscovery, failures);
+Run("native package writes the configured shared multiplier", TestNativePackageSharedMultiplier, failures);
 
 if (failures.Count == 0)
 {
@@ -55,11 +49,10 @@ static void TestEnvironmentOverrides()
     {
       "settings": {
         "enabled": false,
-        "animationScale": 1.0,
-        "spineTimeScale": 1.0,
-        "queueWaitScale": 1.0,
-        "effectDelayScale": 1.0,
-        "preserveGameSettings": true
+        "spineTimeScale": 2.0,
+        "queueWaitScale": 2.0,
+        "effectDelayScale": 2.0,
+        "combatOnly": true
       }
     }
     """;
@@ -67,39 +60,17 @@ static void TestEnvironmentOverrides()
     var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
     {
         [EnvironmentOverrideNames.Enabled] = "true",
-        [EnvironmentOverrideNames.AnimationScale] = "1.75",
-        [EnvironmentOverrideNames.FastModeOverride] = "instant",
+        [EnvironmentOverrideNames.SpineTimeScale] = "1.75",
+        [EnvironmentOverrideNames.EffectDelayScale] = "1.5",
     };
 
     var result = SettingsLoader.LoadFromJson(json, "inline", environment);
 
     Assert(result.Configuration.Settings.Enabled, "Expected env override to enable the mod.");
-    Assert(Math.Abs(result.Configuration.Settings.AnimationScale - 1.75) < 0.0001, "Expected animationScale env override.");
-    Assert(result.Configuration.Settings.FastModeOverride == "instant", "Expected fast mode override to normalize to instant.");
-}
-
-static void TestMutationPolicy()
-{
-    var settings = SpeedModSettings.Defaults.With(new PartialSpeedModSettings
-    {
-        Enabled = true,
-        FastModeOverride = "instant",
-        PreserveGameSettings = true,
-    });
-
-    Assert(!MutationPolicy.ShouldMutateLiveGameSettings(settings), "preserveGameSettings=true must block live mutation.");
-}
-
-static void TestMissingFastModeOverride()
-{
-    var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
-    {
-        [EnvironmentOverrideNames.FastModeOverride] = null,
-    };
-
-    var result = SettingsLoader.LoadFromJson(null, "inline", environment);
-
-    Assert(result.AppliedEnvironmentOverrides.Count == 0, "Null fast mode environment values should not be reported as applied.");
+    Assert(Math.Abs(result.Configuration.Settings.SpineTimeScale - 1.75) < 0.0001, "Expected spineTimeScale env override.");
+    Assert(Math.Abs(result.Configuration.Settings.QueueWaitScale - 2.0) < 0.0001, "Expected queueWaitScale to remain at the config value.");
+    Assert(Math.Abs(result.Configuration.Settings.EffectDelayScale - 1.5) < 0.0001, "Expected effectDelayScale env override.");
+    Assert(result.AppliedEnvironmentOverrides.Contains(EnvironmentOverrideNames.SpineTimeScale), "Expected spineTimeScale to be reported as an applied override.");
 }
 
 static void TestRuntimeSettingsSharedMultiplier()
@@ -297,47 +268,6 @@ static void TestModdedProfileSync()
     }
 }
 
-static void TestManifestTemplate()
-{
-    var descriptor = SpeedModEntryPoint.CreateDescriptor();
-    var manifest = SpeedModEntryPoint.CreateManifestJson(descriptor);
-
-    Assert(manifest.Contains("\"pckName\": \"sts2-speed-skeleton.pck\"", StringComparison.Ordinal), "Expected manifest to include pckName.");
-    Assert(manifest.Contains("\"name\": \"STS2 Speed Skeleton\"", StringComparison.Ordinal), "Expected manifest to include the default name.");
-}
-
-static void TestMaterializePackage()
-{
-    var root = CreateTempDirectory();
-    try
-    {
-        var configuration = WorkspaceConfiguration.CreateLocalDefault() with
-        {
-            GamePaths = WorkspaceConfiguration.CreateLocalDefault().GamePaths with
-            {
-                GameDirectory = Path.Combine(root, "game"),
-                ArtifactsRoot = Path.Combine(root, "artifacts"),
-            },
-        };
-
-        var result = SpeedModEntryPoint.MaterializePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory);
-
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "manifest.json")), "Materialized package should include manifest.json.");
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "mod.cfg")), "Materialized package should include a GUMM-compatible mod.cfg.");
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "scripts", "Start-Sts2SpeedTest.ps1")), "Materialized package should include the launcher script.");
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "config", "runtime-overrides.json")), "Materialized package should include runtime-overrides.json.");
-        var gummBase = File.ReadAllText(Path.Combine(result.PackageRoot, "GUMM_mod.gd"));
-        var launcher = File.ReadAllText(Path.Combine(result.PackageRoot, "scripts", "Start-Sts2SpeedTest.ps1"));
-        Assert(gummBase.Contains("func get_full_path(path: String) -> String:", StringComparison.Ordinal), "GUMM base script should expose get_full_path for mod bootstrap scripts.");
-        Assert(launcher.Contains("-applaunch 2868840", StringComparison.Ordinal), "Launcher should start the game through Steam applaunch.");
-        Assert(result.TestProfiles.Count >= 8, "Expected the packaged test profile catalog.");
-    }
-    finally
-    {
-        SafeDeleteDirectory(root);
-    }
-}
-
 static void TestMaterializeNativePackage()
 {
     var root = CreateTempDirectory();
@@ -354,10 +284,10 @@ static void TestMaterializeNativePackage()
 
         var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory, "subdir");
 
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "mod_manifest.json")), "Native staging package should include mod_manifest.json.");
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "README.native.txt")), "Native staging package should include a native README.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "Sts2Speed.speed.txt")), "Native staging package should include a text multiplier file.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "sts2-speed-skeleton.dll")), "Native staging package should include the pck-matching managed payload.");
+        Assert(!File.Exists(Path.Combine(result.PackageRoot, "mod_manifest.json")), "Native staging package should keep mod_manifest.json inside the generated pck rather than as a loose file.");
+        Assert(!File.Exists(Path.Combine(result.PackageRoot, "README.native.txt")), "Native staging package should not ship documentation files into the live mods directory.");
         Assert(result.MissingArtifacts.Any(artifact => artifact.RelativePath.EndsWith(".pck", StringComparison.OrdinalIgnoreCase)), "Native staging package should report that a .pck artifact is still missing.");
         Assert(result.LayoutKind == "subdir", "Native staging package should normalize the requested layout kind.");
     }
@@ -367,92 +297,30 @@ static void TestMaterializeNativePackage()
     }
 }
 
-static void TestModPathDiscovery()
+static void TestNativePackageSharedMultiplier()
 {
     var root = CreateTempDirectory();
     try
     {
-        var gameDirectory = Path.Combine(root, "game");
-        var userDataRoot = Path.Combine(root, "userdata");
-        var logDirectory = Path.Combine(userDataRoot, "logs");
-        var exactModDirectory = Path.Combine(gameDirectory, "mods");
-
-        Directory.CreateDirectory(exactModDirectory);
-        Directory.CreateDirectory(logDirectory);
-        File.WriteAllText(
-            Path.Combine(logDirectory, "godot.log"),
-            $"[INFO] Loading mods from {exactModDirectory}{Environment.NewLine}");
-
-        var options = new GamePathOptions
+        var configuration = WorkspaceConfiguration.CreateLocalDefault() with
         {
-            GameDirectory = gameDirectory,
-            UserDataRoot = userDataRoot,
-            SteamAccountId = "1234567890",
-            ProfileIndex = 1,
-            ArtifactsRoot = Path.Combine(root, "artifacts"),
+            GamePaths = WorkspaceConfiguration.CreateLocalDefault().GamePaths with
+            {
+                GameDirectory = Path.Combine(root, "game"),
+                ArtifactsRoot = Path.Combine(root, "artifacts"),
+            },
+            Settings = SpeedModSettings.Defaults with
+            {
+                SpineTimeScale = 3.0,
+                QueueWaitScale = 3.0,
+                EffectDelayScale = 3.0,
+            },
         };
 
-        var result = ModPathDiscovery.Discover(options);
+        var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory, "flat");
+        var sharedSpeed = File.ReadAllText(Path.Combine(result.PackageRoot, "Sts2Speed.speed.txt")).Trim();
 
-        Assert(string.Equals(result.RecommendedPath, exactModDirectory, StringComparison.OrdinalIgnoreCase), "Expected log-derived mod path to be recommended.");
-        Assert(result.Candidates.Any(candidate => candidate.DiscoveredFromLog && candidate.Exists), "Expected a discovered log candidate that exists on disk.");
-    }
-    finally
-    {
-        SafeDeleteDirectory(root);
-    }
-}
-
-static void TestMaterializeGummGameEntry()
-{
-    var root = CreateTempDirectory();
-    try
-    {
-        var result = GummIntegration.MaterializeGameDescriptor(root);
-        var config = File.ReadAllText(result.GameConfigPath);
-
-        Assert(File.Exists(result.GameConfigPath), "GUMM game descriptor should be written to disk.");
-        Assert(config.Contains("title=\"Slay the Spire 2\"", StringComparison.Ordinal), "Descriptor should target Slay the Spire 2.");
-        Assert(config.Contains("main_scene=\"res://scenes/game.tscn\"", StringComparison.Ordinal), "Descriptor should contain the STS2 main scene path.");
-    }
-    finally
-    {
-        SafeDeleteDirectory(root);
-    }
-}
-
-static void TestInstallGummLoader()
-{
-    var root = CreateTempDirectory();
-    try
-    {
-        var gameDirectory = Path.Combine(root, "game");
-        var gummRoot = Path.Combine(root, "gumm");
-        var packageRoot = Path.Combine(root, "package");
-        Directory.CreateDirectory(gameDirectory);
-        Directory.CreateDirectory(Path.Combine(gummRoot, "System", "4.x"));
-        Directory.CreateDirectory(packageRoot);
-
-        File.WriteAllText(Path.Combine(packageRoot, "mod.cfg"), "[Godot Mod]");
-        File.WriteAllText(Path.Combine(gummRoot, "System", "4.x", "GUMM_mod_loader.tscn"), "[gd_scene]");
-
-        var options = new GamePathOptions
-        {
-            GameDirectory = gameDirectory,
-            UserDataRoot = Path.Combine(root, "userdata"),
-            SteamAccountId = "1234567890",
-            ProfileIndex = 1,
-            ArtifactsRoot = Path.Combine(root, "artifacts"),
-        };
-
-        var result = GummIntegration.InstallLoader(options, packageRoot, gummRoot);
-        var overrideConfig = File.ReadAllText(Path.Combine(gameDirectory, "override.cfg"));
-
-        Assert(File.Exists(Path.Combine(gameDirectory, "GUMM_mod_loader.tscn")), "GUMM loader scene should be copied into the game directory.");
-        Assert(overrideConfig.Contains("run/main_scene=\"res://GUMM_mod_loader.tscn\"", StringComparison.Ordinal), "override.cfg should redirect the main scene through GUMM.");
-        Assert(overrideConfig.Contains("main_scene=\"res://scenes/game.tscn\"", StringComparison.Ordinal), "override.cfg should preserve the original STS2 main scene.");
-        Assert(overrideConfig.Contains("PackedStringArray", StringComparison.Ordinal), "override.cfg should contain the packed mod list.");
-        Assert(File.Exists(result.ReportPath), "GUMM install should write a report file.");
+        Assert(sharedSpeed == "3", $"Expected packaged shared multiplier to be 3 but received '{sharedSpeed}'.");
     }
     finally
     {

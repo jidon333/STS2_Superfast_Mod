@@ -5,5 +5,7 @@ artifacts/package-layout/
 artifacts/*
 !artifacts/.gitkeep
 STS2_Superfast_Mod/
+!release/STS2_Superfast_Mod/
+!release/STS2_Superfast_Mod/**
 tools/**/.godot/
 tools/godot-export-pack-test/

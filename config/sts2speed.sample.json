@@ -8,13 +8,9 @@
   },
   "settings": {
     "enabled": false,
-    "fastModeOverride": null,
-    "animationScale": 1.0,
-    "spineTimeScale": 1.0,
-    "queueWaitScale": 1.0,
-    "effectDelayScale": 1.0,
-    "combatOnly": true,
-    "preserveGameSettings": true,
-    "verboseLogging": false
+    "spineTimeScale": 2.0,
+    "queueWaitScale": 2.0,
+    "effectDelayScale": 2.0,
+    "combatOnly": true
   }
 }

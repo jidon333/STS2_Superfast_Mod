@@ -29,7 +29,6 @@
 
 - 백업 생성, 검증, 복구
 - vanilla 프로필을 modded 프로필로 복제하는 복구
-- GUMM 경로 부트스트랩 검증
 - 네이티브 `mods + pck + dll + txt` 경로 검증
 - Godot 공식 `.pck` 생성
 - 라이브 게임에 네이티브 패키지 배치
@@ -72,6 +71,7 @@ dotnet run --project src/Sts2Speed.Tool -- deploy-native-package --layout flat
 - [모드 로딩 방식 비교](docs/development/MOD_LOADING_STRATEGIES.md)
 - [초보자용 구조 설명](docs/development/MOD_BEGINNER_GUIDE.md)
 - [로드 체인](docs/development/LOAD_CHAIN.md)
+- [남은 훅과 위험도](docs/development/PENDING_HOOKS_AND_RISKS.md)
 - [배속 해석](docs/development/SPEED_SEMANTICS.md)
 - [작업 기록](docs/development/WORKLOG.md)
 - [상세 조사 로그](docs/development/DETAILED_INVESTIGATION_LOG.md)
