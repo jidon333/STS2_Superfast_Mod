@@ -76,37 +76,37 @@ internal static class RuntimePatchContext
     public static bool TryApplySpineScale(ref float scale)
     {
         var settings = GetSettings();
-        if (!ShouldApply(settings) || IsApproximately(settings.SpineTimeScale, 1.0))
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.SpineTimeScale))
         {
             return false;
         }
 
-        scale = ClampToNonNegative(scale * (float)settings.SpineTimeScale);
+        scale = SpeedScaleMath.ApplyAnimationSpeedMultiplier(scale, settings.SpineTimeScale);
         return true;
     }
 
     public static bool TryApplyQueueWaitScale(ref float fastSeconds, ref float standardSeconds)
     {
         var settings = GetSettings();
-        if (!ShouldApply(settings) || IsApproximately(settings.QueueWaitScale, 1.0))
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.QueueWaitScale))
         {
             return false;
         }
 
-        fastSeconds = ClampToNonNegative(fastSeconds * (float)settings.QueueWaitScale);
-        standardSeconds = ClampToNonNegative(standardSeconds * (float)settings.QueueWaitScale);
+        fastSeconds = SpeedScaleMath.ApplyDurationSpeedMultiplier(fastSeconds, settings.QueueWaitScale);
+        standardSeconds = SpeedScaleMath.ApplyDurationSpeedMultiplier(standardSeconds, settings.QueueWaitScale);
         return true;
     }
 
     public static bool TryApplyEffectDelayScale(ref double timeSec)
     {
         var settings = GetSettings();
-        if (!ShouldApply(settings) || IsApproximately(settings.EffectDelayScale, 1.0))
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.EffectDelayScale))
         {
             return false;
         }
 
-        timeSec = Math.Max(0.0, timeSec * settings.EffectDelayScale);
+        timeSec = SpeedScaleMath.ApplyDurationSpeedMultiplier(timeSec, settings.EffectDelayScale);
         return true;
     }
 
@@ -191,16 +191,6 @@ internal static class RuntimePatchContext
     private static string Describe(RuntimeSpeedSettings settings)
     {
         return $"enabled={settings.Enabled} spine={settings.SpineTimeScale:0.###} queue={settings.QueueWaitScale:0.###} effect={settings.EffectDelayScale:0.###} combatOnly={settings.CombatOnly} sources=[{string.Join(", ", settings.Sources)}]";
-    }
-
-    private static bool IsApproximately(double left, double right)
-    {
-        return Math.Abs(left - right) < 0.0001;
-    }
-
-    private static float ClampToNonNegative(float value)
-    {
-        return value < 0f ? 0f : value;
     }
 
     private static void WriteLine(string message)

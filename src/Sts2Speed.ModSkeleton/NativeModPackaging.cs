@@ -96,7 +96,7 @@ public static partial class SpeedModEntryPoint
         files.Add(WriteNativeTextFile(
             packageRoot,
             "Sts2Speed.speed.txt",
-            "1.0" + Environment.NewLine,
+            "2.0" + Environment.NewLine,
             "generated"));
         files.Add(WriteNativeTextFile(
             packageRoot,
@@ -352,6 +352,7 @@ public static partial class SpeedModEntryPoint
             "Current config convention:",
             "  - Sts2Speed.speed.txt contains a single floating-point multiplier",
             "  - Example values: 2.0, 3.0, 0.5",
+            "  - 2.0 means x2 animation speed and half-duration waits/timers",
             "  - STS2_SPEED_SPINE_TIME_SCALE, STS2_SPEED_QUEUE_WAIT_SCALE, STS2_SPEED_EFFECT_DELAY_SCALE override the shared multiplier",
         };
 

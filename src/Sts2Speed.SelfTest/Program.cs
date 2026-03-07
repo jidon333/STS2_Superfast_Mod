@@ -7,6 +7,7 @@ var failures = new List<string>();
 Run("environment overrides win over config", TestEnvironmentOverrides, failures);
 Run("missing fast mode env override is ignored", TestMissingFastModeOverride, failures);
 Run("runtime settings infer enablement from shared speed file", TestRuntimeSettingsSharedMultiplier, failures);
+Run("speed multiplier semantics shrink wait durations", TestSpeedMultiplierSemantics, failures);
 Run("preserveGameSettings blocks live mutation", TestMutationPolicy, failures);
 Run("snapshot planner includes required files", TestSnapshotPlanner, failures);
 Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVerification, failures);
@@ -121,6 +122,14 @@ static void TestRuntimeSettingsSharedMultiplier()
     {
         SafeDeleteDirectory(root);
     }
+}
+
+static void TestSpeedMultiplierSemantics()
+{
+    Assert(Math.Abs(SpeedScaleMath.ApplyAnimationSpeedMultiplier(1.0f, 2.0) - 2.0f) < 0.0001, "Animation multipliers should scale up directly.");
+    Assert(Math.Abs(SpeedScaleMath.ApplyDurationSpeedMultiplier(1.0f, 2.0) - 0.5f) < 0.0001, "A 2.0 speed multiplier should halve float wait durations.");
+    Assert(Math.Abs(SpeedScaleMath.ApplyDurationSpeedMultiplier(1.0, 0.5) - 2.0) < 0.0001, "A 0.5 speed multiplier should double double wait durations.");
+    Assert(Math.Abs(SpeedScaleMath.ApplyDurationSpeedMultiplier(1.0, 0.0) - 1.0) < 0.0001, "Invalid zero multipliers should leave durations unchanged.");
 }
 
 static void TestSnapshotPlanner()
