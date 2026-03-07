@@ -26,7 +26,7 @@ public static class ModPathDiscovery
 
         if (File.Exists(logPath))
         {
-            foreach (var candidatePath in ExtractPathsFromLog(File.ReadAllText(logPath)))
+            foreach (var candidatePath in ExtractPathsFromLog(ReadTextWithSharedAccess(logPath)))
             {
                 AddCandidate(candidates, candidatePath, discoveredFromLog: true, "Found in godot.log.");
             }
@@ -121,5 +121,12 @@ public static class ModPathDiscovery
             discoveredFromLog,
             evidence,
             parentExists);
+    }
+
+    private static string ReadTextWithSharedAccess(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }

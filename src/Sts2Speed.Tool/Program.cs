@@ -41,6 +41,14 @@ try
                 return 0;
             }
 
+        case "materialize-gumm-game-entry":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var result = GummIntegration.MaterializeGameDescriptor(outputRoot);
+                PrintJson(result);
+                return 0;
+            }
+
         case "deploy-package":
             {
                 var modRoot = RequireAbsolutePath(options, "--mod-root", workspaceRoot);
@@ -48,6 +56,15 @@ try
                 var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
                 var package = SpeedModEntryPoint.MaterializePackage(configuration, outputRoot, runtimeAssemblyRoot);
                 var result = SpeedModEntryPoint.DeployPackage(package, modRoot);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "install-gumm-loader":
+            {
+                var packageRoot = ResolvePackageRoot(options, configuration, workspaceRoot);
+                var gummRepositoryRoot = ResolveGummRepositoryRoot(options, workspaceRoot);
+                var result = GummIntegration.InstallLoader(configuration.GamePaths, packageRoot, gummRepositoryRoot);
                 PrintJson(result);
                 return 0;
             }
@@ -196,6 +213,29 @@ static string ResolveRuntimeAssemblyRoot(IReadOnlyDictionary<string, string> opt
     return AppContext.BaseDirectory;
 }
 
+static string ResolvePackageRoot(
+    IReadOnlyDictionary<string, string> options,
+    WorkspaceConfiguration configuration,
+    string workspaceRoot)
+{
+    if (options.TryGetValue("--package-root", out var explicitRoot))
+    {
+        return Path.GetFullPath(explicitRoot, workspaceRoot);
+    }
+
+    return Path.Combine(ResolveArtifactsRoot(configuration, workspaceRoot), "package-layout", "Sts2Speed");
+}
+
+static string ResolveGummRepositoryRoot(IReadOnlyDictionary<string, string> options, string workspaceRoot)
+{
+    if (options.TryGetValue("--gumm-repo-root", out var explicitRoot))
+    {
+        return Path.GetFullPath(explicitRoot, workspaceRoot);
+    }
+
+    return Path.GetFullPath(Path.Combine(workspaceRoot, "artifacts", "tools", "Godot-Universal-Mod-Manager"));
+}
+
 static string ResolveSnapshotRoot(
     IReadOnlyDictionary<string, string> options,
     WorkspaceConfiguration configuration,
@@ -240,7 +280,9 @@ static void WriteUsage()
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- show-config [--config path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-package [--config path] [--artifacts-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-package [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-gumm-game-entry [--config path] [--artifacts-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- deploy-package --mod-root path [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- install-gumm-loader [--config path] [--package-root path] [--gumm-repo-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- discover-mod-path [--config path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-snapshot [--config path] [--snapshot-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- snapshot [--config path] [--snapshot-root path]");

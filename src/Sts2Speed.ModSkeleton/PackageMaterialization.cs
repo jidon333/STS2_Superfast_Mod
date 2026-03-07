@@ -12,6 +12,13 @@ public sealed record RecommendedTestProfile(
     double? EffectDelayScale,
     string Purpose);
 
+public sealed record RuntimeOverridesDocument(
+    string Profile,
+    bool Enabled,
+    double? SpineTimeScale,
+    double? QueueWaitScale,
+    double? EffectDelayScale);
+
 public sealed record MaterializedPackageFile(
     string RelativePath,
     string OutputPath,
@@ -86,6 +93,11 @@ public static partial class SpeedModEntryPoint
             "generated"));
         files.Add(WriteTextFile(
             packageRoot,
+            Path.Combine("config", "runtime-overrides.json"),
+            BuildRuntimeOverridesJson(CreateRecommendedTestProfiles().First(profile => profile.Name == "vanilla")),
+            "generated"));
+        files.Add(WriteTextFile(
+            packageRoot,
             "README.txt",
             BuildPackageReadme(Initialize(configuration)),
             "generated"));
@@ -101,11 +113,12 @@ public static partial class SpeedModEntryPoint
             Path.Combine("scripts", "Start-Sts2SpeedTest.ps1"),
             BuildLaunchScript(configuration.GamePaths.GameDirectory, testProfiles),
             "generated"));
+        var gummBaseScript = LoadGummBaseScript(outputRoot);
         files.Add(WriteTextFile(
             packageRoot,
             "GUMM_mod.gd",
-            BuildGummBaseScript(),
-            "generated"));
+            gummBaseScript.Contents,
+            gummBaseScript.SourceKind));
         files.Add(WriteTextFile(
             packageRoot,
             "mod.gd",
@@ -199,7 +212,7 @@ public static partial class SpeedModEntryPoint
     private static string BuildLaunchScript(string gameDirectory, IReadOnlyList<RecommendedTestProfile> testProfiles)
     {
         var validProfiles = string.Join("', '", testProfiles.Select(profile => profile.Name));
-        var gameExe = Path.Combine(gameDirectory, "SlayTheSpire2.exe");
+        var steamExe = @"D:\Program Files (x86)\Steam\steam.exe";
 
         return $$"""
         param(
@@ -212,16 +225,27 @@ public static partial class SpeedModEntryPoint
         )
 
         $ErrorActionPreference = 'Stop'
+        $packageRoot = Split-Path -Parent $PSScriptRoot
         $profilePath = Join-Path (Split-Path -Parent $PSCommandPath) 'test-profiles.json'
+        $runtimeOverridesPath = Join-Path $packageRoot 'config\runtime-overrides.json'
         $profiles = Get-Content $profilePath -Raw | ConvertFrom-Json
         $selected = $profiles | Where-Object { $_.name -eq $Profile } | Select-Object -First 1
         if (-not $selected) {
             throw "Unknown profile: $Profile"
         }
 
-        $gameExe = '{{gameExe}}'
-        if (-not (Test-Path $gameExe)) {
-            throw "Game executable not found: $gameExe"
+        function Resolve-SteamPath {
+            $command = Get-Command steam.exe -ErrorAction SilentlyContinue
+            if ($command) { return $command.Source }
+            foreach ($candidate in @(
+                '{{steamExe}}',
+                'C:\Program Files (x86)\Steam\steam.exe',
+                'D:\Program Files (x86)\Steam\steam.exe'
+            )) {
+                if (Test-Path $candidate) { return $candidate }
+            }
+
+            throw 'steam.exe was not found. Start Steam manually and import this mod package through GUMM.'
         }
 
         function Set-Or-Clear([string]$name, [string]$value) {
@@ -268,6 +292,16 @@ public static partial class SpeedModEntryPoint
             ''
         }
 
+        $runtimeOverrides = [ordered]@{
+            profile = $selected.name
+            enabled = if ([string]::IsNullOrWhiteSpace($resolvedEnabled)) { $false } else { [bool]::Parse($resolvedEnabled) }
+            spineTimeScale = if ([string]::IsNullOrWhiteSpace($resolvedSpine)) { $null } else { [double]::Parse($resolvedSpine, [System.Globalization.CultureInfo]::InvariantCulture) }
+            queueWaitScale = if ([string]::IsNullOrWhiteSpace($resolvedQueue)) { $null } else { [double]::Parse($resolvedQueue, [System.Globalization.CultureInfo]::InvariantCulture) }
+            effectDelayScale = if ([string]::IsNullOrWhiteSpace($resolvedEffect)) { $null } else { [double]::Parse($resolvedEffect, [System.Globalization.CultureInfo]::InvariantCulture) }
+        }
+
+        $runtimeOverrides | ConvertTo-Json -Depth 4 | Set-Content -Path $runtimeOverridesPath -Encoding UTF8
+
         Set-Or-Clear 'STS2_SPEED_ENABLED' $resolvedEnabled
         Remove-Item 'Env:STS2_SPEED_ANIMATION_SCALE' -ErrorAction SilentlyContinue
         Set-Or-Clear 'STS2_SPEED_SPINE_TIME_SCALE' $resolvedSpine
@@ -275,7 +309,8 @@ public static partial class SpeedModEntryPoint
         Set-Or-Clear 'STS2_SPEED_EFFECT_DELAY_SCALE' $resolvedEffect
         Remove-Item 'Env:STS2_SPEED_FAST_MODE_OVERRIDE' -ErrorAction SilentlyContinue
 
-        Start-Process -FilePath $gameExe -WorkingDirectory (Split-Path -Parent $gameExe)
+        $steamPath = Resolve-SteamPath
+        Start-Process -FilePath $steamPath -ArgumentList '-applaunch 2868840'
         """;
     }
 
@@ -291,11 +326,23 @@ public static partial class SpeedModEntryPoint
         """;
     }
 
-    private static string BuildGummBaseScript()
+    private static (string Contents, string SourceKind) LoadGummBaseScript(string outputRoot)
+    {
+        var repositoryPath = Path.Combine(outputRoot, "tools", "Godot-Universal-Mod-Manager", "System", "4.x", "GUMM_mod.gd");
+        if (File.Exists(repositoryPath))
+        {
+            return (File.ReadAllText(repositoryPath), "gumm-system");
+        }
+
+        return (BuildFallbackGummBaseScript(), "generated");
+    }
+
+    private static string BuildFallbackGummBaseScript()
     {
         return """
         extends RefCounted
 
+        var resource_storage: Array[Resource]
         var base_path: String
 
         func initialize(mod_path: String, scene_tree: SceneTree) -> void:
@@ -304,6 +351,28 @@ public static partial class SpeedModEntryPoint
 
         func _initialize(scene_tree: SceneTree) -> void:
         	pass
+
+        func replace_resource_at(target_path: String, resource: Resource) -> void:
+        	resource.take_over_path(target_path)
+        	resource_storage.append(resource)
+
+        func load_texture(path: String) -> Texture2D:
+        	return ImageTexture.create_from_image(Image.load_from_file(get_full_path(path)))
+
+        func load_mp3(path: String) -> AudioStreamMP3:
+        	var file := FileAccess.open(path, FileAccess.READ)
+        	var data := file.get_buffer(file.get_length())
+
+        	var stream := AudioStreamMP3.new()
+        	stream.data = data
+
+        	return stream
+
+        func load_resource(path: String) -> Resource:
+        	return load(get_full_path(path))
+
+        func get_full_path(path: String) -> String:
+        	return base_path.path_join(path.trim_prefix("mod://"))
         """;
     }
 
@@ -313,11 +382,36 @@ public static partial class SpeedModEntryPoint
         extends "GUMM_mod.gd"
 
         func _initialize(scene_tree: SceneTree) -> void:
+        	var runtime_overrides := load_runtime_overrides()
         	var enabled := OS.get_environment("STS2_SPEED_ENABLED")
         	var spine := OS.get_environment("STS2_SPEED_SPINE_TIME_SCALE")
         	var queue := OS.get_environment("STS2_SPEED_QUEUE_WAIT_SCALE")
         	var effect := OS.get_environment("STS2_SPEED_EFFECT_DELAY_SCALE")
-        	print("STS2 Speed Skeleton GUMM bootstrap loaded. enabled=%s spine=%s queue=%s effect=%s" % [enabled, spine, queue, effect])
+        	print("STS2 Speed Skeleton GUMM bootstrap loaded. runtime=%s env_enabled=%s env_spine=%s env_queue=%s env_effect=%s" % [runtime_overrides, enabled, spine, queue, effect])
+
+        func load_runtime_overrides() -> Dictionary:
+        	var path: String = get_full_path("config/runtime-overrides.json")
+        	if not FileAccess.file_exists(path):
+        		return {}
+
+        	var text := FileAccess.get_file_as_string(path)
+        	var parsed := JSON.parse_string(text)
+        	if typeof(parsed) == TYPE_DICTIONARY:
+        		return parsed
+
+        	return {}
         """;
+    }
+
+    private static string BuildRuntimeOverridesJson(RecommendedTestProfile profile)
+    {
+        var document = new RuntimeOverridesDocument(
+            profile.Name,
+            profile.Enabled,
+            profile.SpineTimeScale,
+            profile.QueueWaitScale,
+            profile.EffectDelayScale);
+
+        return JsonSerializer.Serialize(document, JsonOptions);
     }
 }

@@ -120,6 +120,14 @@ public static class SnapshotPlanner
             Path.Combine(options.GameDirectory, "release_info.json"),
             Path.Combine("game", "release_info.json"));
         yield return (
+            "GameInstall",
+            Path.Combine(options.GameDirectory, "override.cfg"),
+            Path.Combine("game", "override.cfg"));
+        yield return (
+            "GameInstall",
+            Path.Combine(options.GameDirectory, "GUMM_mod_loader.tscn"),
+            Path.Combine("game", "GUMM_mod_loader.tscn"));
+        yield return (
             "UserSettings",
             Path.Combine(options.UserDataRoot, "steam", options.SteamAccountId, "settings.save"),
             Path.Combine("user", "steam", options.SteamAccountId, "settings.save"));

@@ -12,6 +12,8 @@ Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVeri
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
 Run("manifest contains expected metadata", TestManifestTemplate, failures);
 Run("materialized package contains launcher assets", TestMaterializePackage, failures);
+Run("GUMM game entry is materialized for STS2", TestMaterializeGummGameEntry, failures);
+Run("GUMM loader install writes override settings", TestInstallGummLoader, failures);
 Run("mod path discovery prefers exact log evidence", TestModPathDiscovery, failures);
 
 if (failures.Count == 0)
@@ -112,8 +114,9 @@ static void TestSnapshotPlanner()
 
     var plan = SnapshotPlanner.CreateDefaultPlan(options, @"C:\workspace\artifacts\snapshots\test", probe);
 
-    Assert(plan.Entries.Count == 9, $"Expected 9 snapshot entries but received {plan.Entries.Count}.");
+    Assert(plan.Entries.Count == 11, $"Expected 11 snapshot entries but received {plan.Entries.Count}.");
     Assert(plan.Entries.Any(entry => entry.BackupPath.EndsWith(Path.Combine("game", "release_info.json"), StringComparison.OrdinalIgnoreCase)), "Missing release_info snapshot entry.");
+    Assert(plan.Entries.Any(entry => entry.BackupPath.EndsWith(Path.Combine("game", "override.cfg"), StringComparison.OrdinalIgnoreCase)), "Missing override.cfg snapshot entry.");
     Assert(plan.Entries.Count(entry => entry.Exists) == 2, "Fake probe should mark exactly two files as existing.");
 }
 
@@ -209,6 +212,11 @@ static void TestMaterializePackage()
         Assert(File.Exists(Path.Combine(result.PackageRoot, "manifest.json")), "Materialized package should include manifest.json.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "mod.cfg")), "Materialized package should include a GUMM-compatible mod.cfg.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "scripts", "Start-Sts2SpeedTest.ps1")), "Materialized package should include the launcher script.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "config", "runtime-overrides.json")), "Materialized package should include runtime-overrides.json.");
+        var gummBase = File.ReadAllText(Path.Combine(result.PackageRoot, "GUMM_mod.gd"));
+        var launcher = File.ReadAllText(Path.Combine(result.PackageRoot, "scripts", "Start-Sts2SpeedTest.ps1"));
+        Assert(gummBase.Contains("func get_full_path(path: String) -> String:", StringComparison.Ordinal), "GUMM base script should expose get_full_path for mod bootstrap scripts.");
+        Assert(launcher.Contains("-applaunch 2868840", StringComparison.Ordinal), "Launcher should start the game through Steam applaunch.");
         Assert(result.TestProfiles.Count >= 8, "Expected the packaged test profile catalog.");
     }
     finally
@@ -246,6 +254,63 @@ static void TestModPathDiscovery()
 
         Assert(string.Equals(result.RecommendedPath, exactModDirectory, StringComparison.OrdinalIgnoreCase), "Expected log-derived mod path to be recommended.");
         Assert(result.Candidates.Any(candidate => candidate.DiscoveredFromLog && candidate.Exists), "Expected a discovered log candidate that exists on disk.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestMaterializeGummGameEntry()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var result = GummIntegration.MaterializeGameDescriptor(root);
+        var config = File.ReadAllText(result.GameConfigPath);
+
+        Assert(File.Exists(result.GameConfigPath), "GUMM game descriptor should be written to disk.");
+        Assert(config.Contains("title=\"Slay the Spire 2\"", StringComparison.Ordinal), "Descriptor should target Slay the Spire 2.");
+        Assert(config.Contains("main_scene=\"res://scenes/game.tscn\"", StringComparison.Ordinal), "Descriptor should contain the STS2 main scene path.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestInstallGummLoader()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var gameDirectory = Path.Combine(root, "game");
+        var gummRoot = Path.Combine(root, "gumm");
+        var packageRoot = Path.Combine(root, "package");
+        Directory.CreateDirectory(gameDirectory);
+        Directory.CreateDirectory(Path.Combine(gummRoot, "System", "4.x"));
+        Directory.CreateDirectory(packageRoot);
+
+        File.WriteAllText(Path.Combine(packageRoot, "mod.cfg"), "[Godot Mod]");
+        File.WriteAllText(Path.Combine(gummRoot, "System", "4.x", "GUMM_mod_loader.tscn"), "[gd_scene]");
+
+        var options = new GamePathOptions
+        {
+            GameDirectory = gameDirectory,
+            UserDataRoot = Path.Combine(root, "userdata"),
+            SteamAccountId = "1234567890",
+            ProfileIndex = 1,
+            ArtifactsRoot = Path.Combine(root, "artifacts"),
+        };
+
+        var result = GummIntegration.InstallLoader(options, packageRoot, gummRoot);
+        var overrideConfig = File.ReadAllText(Path.Combine(gameDirectory, "override.cfg"));
+
+        Assert(File.Exists(Path.Combine(gameDirectory, "GUMM_mod_loader.tscn")), "GUMM loader scene should be copied into the game directory.");
+        Assert(overrideConfig.Contains("run/main_scene=\"res://GUMM_mod_loader.tscn\"", StringComparison.Ordinal), "override.cfg should redirect the main scene through GUMM.");
+        Assert(overrideConfig.Contains("main_scene=\"res://scenes/game.tscn\"", StringComparison.Ordinal), "override.cfg should preserve the original STS2 main scene.");
+        Assert(overrideConfig.Contains("PackedStringArray", StringComparison.Ordinal), "override.cfg should contain the packed mod list.");
+        Assert(File.Exists(result.ReportPath), "GUMM install should write a report file.");
     }
     finally
     {
