@@ -77,10 +77,33 @@ public static class SnapshotPlanner
         return new RestorePlan(snapshotPlan.SnapshotRoot, entries);
     }
 
+    public static RestorePlan CreateRestorePlan(SnapshotExecutionResult snapshotExecution, IFileStateProbe? probe = null)
+    {
+        probe ??= new PhysicalFileStateProbe();
+        var entries = snapshotExecution.Entries
+            .Select(entry => new RestoreEntry(
+                entry.BackupPath,
+                entry.SourcePath,
+                probe.FileExists(entry.BackupPath)))
+            .ToList();
+
+        return new RestorePlan(snapshotExecution.SnapshotRoot, entries);
+    }
+
     public static string BuildSnapshotRoot(GamePathOptions options, DateTimeOffset now)
     {
         var stamp = now.ToString("yyyyMMdd-HHmmss");
         return Path.Combine(options.ArtifactsRoot, "snapshots", stamp);
+    }
+
+    public static string BuildSnapshotReportPath(string snapshotRoot)
+    {
+        return Path.Combine(snapshotRoot, "snapshot-report.json");
+    }
+
+    public static string BuildRestoreReportPath(string snapshotRoot)
+    {
+        return Path.Combine(snapshotRoot, "restore-report.json");
     }
 
     private static IEnumerable<(string Category, string SourcePath, string RelativeBackupPath)> BuildEntries(GamePathOptions options)

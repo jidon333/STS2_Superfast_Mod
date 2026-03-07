@@ -10,58 +10,107 @@ var configPath = ResolveConfigPath(options, workspaceRoot);
 var loadResult = SettingsLoader.LoadFromFile(configPath, ReadEnvironment());
 var configuration = ApplyPathOverrides(loadResult.Configuration, options);
 
-switch (command)
+try
 {
-    case "show-config":
-        PrintJson(new
-        {
-            loadResult.ConfigurationSource,
-            loadResult.AppliedEnvironmentOverrides,
-            loadResult.Warnings,
-            Configuration = configuration,
-        });
-        return 0;
-
-    case "dry-run-package":
-        {
-            var plan = SpeedModEntryPoint.CreateDryRunPackagePlan(
-                configuration,
-                Path.GetFullPath(configuration.GamePaths.ArtifactsRoot, workspaceRoot));
-
-            PrintJson(plan);
+    switch (command)
+    {
+        case "show-config":
+            PrintJson(new
+            {
+                loadResult.ConfigurationSource,
+                loadResult.AppliedEnvironmentOverrides,
+                loadResult.Warnings,
+                Configuration = configuration,
+            });
             return 0;
-        }
 
-    case "dry-run-snapshot":
-        {
-            var snapshotRoot = options.TryGetValue("--snapshot-root", out var overrideRoot)
-                ? Path.GetFullPath(overrideRoot, workspaceRoot)
-                : Path.GetFullPath(SnapshotPlanner.BuildSnapshotRoot(configuration.GamePaths, DateTimeOffset.Now), workspaceRoot);
+        case "dry-run-package":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var plan = SpeedModEntryPoint.CreateDryRunPackagePlan(configuration, outputRoot);
+                PrintJson(plan);
+                return 0;
+            }
 
-            var plan = SnapshotPlanner.CreateDefaultPlan(configuration.GamePaths, snapshotRoot);
-            PrintJson(plan);
+        case "materialize-package":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
+                var result = SpeedModEntryPoint.MaterializePackage(configuration, outputRoot, runtimeAssemblyRoot);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "deploy-package":
+            {
+                var modRoot = RequireAbsolutePath(options, "--mod-root", workspaceRoot);
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
+                var package = SpeedModEntryPoint.MaterializePackage(configuration, outputRoot, runtimeAssemblyRoot);
+                var result = SpeedModEntryPoint.DeployPackage(package, modRoot);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "discover-mod-path":
+            {
+                var result = ModPathDiscovery.Discover(configuration.GamePaths);
+                PrintJson(result);
+                return result.RecommendedPath is null ? 1 : 0;
+            }
+
+        case "dry-run-snapshot":
+            {
+                var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
+                var plan = SnapshotPlanner.CreateDefaultPlan(configuration.GamePaths, snapshotRoot);
+                PrintJson(plan);
+                return 0;
+            }
+
+        case "snapshot":
+            {
+                var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
+                var plan = SnapshotPlanner.CreateDefaultPlan(configuration.GamePaths, snapshotRoot);
+                var result = SnapshotExecutor.ExecuteSnapshot(plan);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "dry-run-restore":
+            {
+                var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
+                var plan = ResolveRestorePlan(snapshotRoot, configuration.GamePaths);
+                PrintJson(plan);
+                return 0;
+            }
+
+        case "restore":
+            {
+                var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
+                var plan = ResolveRestorePlan(snapshotRoot, configuration.GamePaths);
+                var result = SnapshotExecutor.ExecuteRestore(plan);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "verify-snapshot":
+            {
+                var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
+                var snapshot = SnapshotExecutor.LoadSnapshotExecutionResult(snapshotRoot);
+                var result = SnapshotExecutor.VerifySnapshot(snapshot);
+                PrintJson(result);
+                return result.AllEntriesMatch ? 0 : 1;
+            }
+
+        default:
+            WriteUsage();
             return 0;
-        }
-
-    case "dry-run-restore":
-        {
-            var snapshotRoot = options.TryGetValue("--snapshot-root", out var overrideRoot)
-                ? Path.GetFullPath(overrideRoot, workspaceRoot)
-                : Path.GetFullPath(SnapshotPlanner.BuildSnapshotRoot(configuration.GamePaths, DateTimeOffset.Now), workspaceRoot);
-
-            var snapshotPlan = SnapshotPlanner.CreateDefaultPlan(configuration.GamePaths, snapshotRoot);
-            var restorePlan = SnapshotPlanner.CreateRestorePlan(snapshotPlan);
-            PrintJson(restorePlan);
-            return 0;
-        }
-
-    default:
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- show-config [--config path]");
-        Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-package [--config path] [--artifacts-root path]");
-        Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-snapshot [--config path] [--snapshot-root path]");
-        Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-restore [--config path] [--snapshot-root path]");
-        return 0;
+    }
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine(exception.Message);
+    return 1;
 }
 
 static Dictionary<string, string> ParseOptions(string[] args)
@@ -130,6 +179,74 @@ static WorkspaceConfiguration ApplyPathOverrides(WorkspaceConfiguration configur
     {
         GamePaths = gamePaths,
     };
+}
+
+static string ResolveArtifactsRoot(WorkspaceConfiguration configuration, string workspaceRoot)
+{
+    return Path.GetFullPath(configuration.GamePaths.ArtifactsRoot, workspaceRoot);
+}
+
+static string ResolveRuntimeAssemblyRoot(IReadOnlyDictionary<string, string> options, string workspaceRoot)
+{
+    if (options.TryGetValue("--runtime-assembly-root", out var explicitRoot))
+    {
+        return Path.GetFullPath(explicitRoot, workspaceRoot);
+    }
+
+    return AppContext.BaseDirectory;
+}
+
+static string ResolveSnapshotRoot(
+    IReadOnlyDictionary<string, string> options,
+    WorkspaceConfiguration configuration,
+    string workspaceRoot)
+{
+    if (options.TryGetValue("--snapshot-root", out var explicitRoot))
+    {
+        return Path.GetFullPath(explicitRoot, workspaceRoot);
+    }
+
+    return Path.GetFullPath(
+        SnapshotPlanner.BuildSnapshotRoot(configuration.GamePaths, DateTimeOffset.Now),
+        workspaceRoot);
+}
+
+static RestorePlan ResolveRestorePlan(string snapshotRoot, GamePathOptions gamePaths)
+{
+    var reportPath = SnapshotPlanner.BuildSnapshotReportPath(snapshotRoot);
+    if (File.Exists(reportPath))
+    {
+        var snapshot = SnapshotExecutor.LoadSnapshotExecutionResult(snapshotRoot);
+        return SnapshotPlanner.CreateRestorePlan(snapshot);
+    }
+
+    var plan = SnapshotPlanner.CreateDefaultPlan(gamePaths, snapshotRoot);
+    return SnapshotPlanner.CreateRestorePlan(plan);
+}
+
+static string RequireAbsolutePath(IReadOnlyDictionary<string, string> options, string optionName, string workspaceRoot)
+{
+    if (!options.TryGetValue(optionName, out var value) || string.IsNullOrWhiteSpace(value))
+    {
+        throw new InvalidOperationException($"Missing required option: {optionName}");
+    }
+
+    return Path.GetFullPath(value, workspaceRoot);
+}
+
+static void WriteUsage()
+{
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- show-config [--config path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-package [--config path] [--artifacts-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-package [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- deploy-package --mod-root path [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- discover-mod-path [--config path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-snapshot [--config path] [--snapshot-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- snapshot [--config path] [--snapshot-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-restore [--config path] [--snapshot-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- restore [--config path] [--snapshot-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- verify-snapshot [--snapshot-root path]");
 }
 
 static void PrintJson<T>(T value)

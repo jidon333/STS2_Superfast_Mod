@@ -8,8 +8,11 @@ Run("environment overrides win over config", TestEnvironmentOverrides, failures)
 Run("missing fast mode env override is ignored", TestMissingFastModeOverride, failures);
 Run("preserveGameSettings blocks live mutation", TestMutationPolicy, failures);
 Run("snapshot planner includes required files", TestSnapshotPlanner, failures);
+Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVerification, failures);
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
 Run("manifest contains expected metadata", TestManifestTemplate, failures);
+Run("materialized package contains launcher assets", TestMaterializePackage, failures);
+Run("mod path discovery prefers exact log evidence", TestModPathDiscovery, failures);
 
 if (failures.Count == 0)
 {
@@ -125,6 +128,59 @@ static void TestRestorePlan()
     Assert(restore.Entries[0].BackupExists, "Fake probe should mark the first backup path as existing.");
 }
 
+static void TestSnapshotExecutionAndVerification()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var gameDirectory = Path.Combine(root, "game");
+        var userDataRoot = Path.Combine(root, "userdata");
+        var steamDirectory = Path.Combine(userDataRoot, "steam", "1234567890");
+        var saveDirectory = Path.Combine(steamDirectory, "profile1", "saves");
+        Directory.CreateDirectory(gameDirectory);
+        Directory.CreateDirectory(saveDirectory);
+
+        var releaseInfoPath = Path.Combine(gameDirectory, "release_info.json");
+        var settingsPath = Path.Combine(steamDirectory, "settings.save");
+        var prefsPath = Path.Combine(saveDirectory, "prefs.save");
+        File.WriteAllText(releaseInfoPath, """{"version":"test"}""");
+        File.WriteAllText(settingsPath, """{"screenshake":"true"}""");
+        File.WriteAllText(prefsPath, """{"fast_mode":"fast"}""");
+
+        var options = new GamePathOptions
+        {
+            GameDirectory = gameDirectory,
+            UserDataRoot = userDataRoot,
+            SteamAccountId = "1234567890",
+            ProfileIndex = 1,
+            ArtifactsRoot = Path.Combine(root, "artifacts"),
+        };
+
+        var snapshotRoot = SnapshotPlanner.BuildSnapshotRoot(options, new DateTimeOffset(2026, 3, 7, 10, 0, 0, TimeSpan.Zero));
+        var plan = SnapshotPlanner.CreateDefaultPlan(options, snapshotRoot);
+        var snapshot = SnapshotExecutor.ExecuteSnapshot(plan);
+
+        Assert(snapshot.Entries.Count(entry => entry.Status == "copied") == 3, "Expected three copied files in the snapshot result.");
+        Assert(File.Exists(Path.Combine(snapshotRoot, "game", "release_info.json")), "Snapshot should contain release_info.json.");
+
+        var verification = SnapshotExecutor.VerifySnapshot(snapshot);
+        Assert(verification.AllEntriesMatch, "Unchanged files should verify successfully.");
+
+        File.WriteAllText(settingsPath, """{"screenshake":"false"}""");
+        var changedVerification = SnapshotExecutor.VerifySnapshot(snapshot);
+        Assert(!changedVerification.AllEntriesMatch, "Changing a source file should fail verification.");
+        Assert(changedVerification.Entries.Any(entry => entry.SourcePath == settingsPath && entry.Status == "changed"), "Expected settings.save to be marked as changed.");
+
+        var restorePlan = SnapshotPlanner.CreateRestorePlan(snapshot);
+        SnapshotExecutor.ExecuteRestore(restorePlan);
+        Assert(File.ReadAllText(settingsPath).Contains("true", StringComparison.Ordinal), "Restore should put the original settings file back.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
 static void TestManifestTemplate()
 {
     var descriptor = SpeedModEntryPoint.CreateDescriptor();
@@ -134,12 +190,92 @@ static void TestManifestTemplate()
     Assert(manifest.Contains("\"name\": \"STS2 Speed Skeleton\"", StringComparison.Ordinal), "Expected manifest to include the default name.");
 }
 
+static void TestMaterializePackage()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var configuration = WorkspaceConfiguration.CreateLocalDefault() with
+        {
+            GamePaths = WorkspaceConfiguration.CreateLocalDefault().GamePaths with
+            {
+                GameDirectory = Path.Combine(root, "game"),
+                ArtifactsRoot = Path.Combine(root, "artifacts"),
+            },
+        };
+
+        var result = SpeedModEntryPoint.MaterializePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory);
+
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "manifest.json")), "Materialized package should include manifest.json.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "mod.cfg")), "Materialized package should include a GUMM-compatible mod.cfg.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "scripts", "Start-Sts2SpeedTest.ps1")), "Materialized package should include the launcher script.");
+        Assert(result.TestProfiles.Count >= 8, "Expected the packaged test profile catalog.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestModPathDiscovery()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var gameDirectory = Path.Combine(root, "game");
+        var userDataRoot = Path.Combine(root, "userdata");
+        var logDirectory = Path.Combine(userDataRoot, "logs");
+        var exactModDirectory = Path.Combine(gameDirectory, "mods");
+
+        Directory.CreateDirectory(exactModDirectory);
+        Directory.CreateDirectory(logDirectory);
+        File.WriteAllText(
+            Path.Combine(logDirectory, "godot.log"),
+            $"[INFO] Loading mods from {exactModDirectory}{Environment.NewLine}");
+
+        var options = new GamePathOptions
+        {
+            GameDirectory = gameDirectory,
+            UserDataRoot = userDataRoot,
+            SteamAccountId = "1234567890",
+            ProfileIndex = 1,
+            ArtifactsRoot = Path.Combine(root, "artifacts"),
+        };
+
+        var result = ModPathDiscovery.Discover(options);
+
+        Assert(string.Equals(result.RecommendedPath, exactModDirectory, StringComparison.OrdinalIgnoreCase), "Expected log-derived mod path to be recommended.");
+        Assert(result.Candidates.Any(candidate => candidate.DiscoveredFromLog && candidate.Exists), "Expected a discovered log candidate that exists on disk.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
 static void Assert(bool condition, string message)
 {
     if (!condition)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static string CreateTempDirectory()
+{
+    var path = Path.Combine(Path.GetTempPath(), "Sts2SpeedTests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(path);
+    return path;
+}
+
+static void SafeDeleteDirectory(string path)
+{
+    if (!Directory.Exists(path))
+    {
+        return;
+    }
+
+    Directory.Delete(path, recursive: true);
 }
 
 sealed class FakeProbe : IFileStateProbe

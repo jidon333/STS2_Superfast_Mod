@@ -35,7 +35,7 @@ public sealed record DryRunPackagePlan(
     IReadOnlyList<SkeletonPackageFile> Files,
     IReadOnlyList<string> Warnings);
 
-public static class SpeedModEntryPoint
+public static partial class SpeedModEntryPoint
 {
     public static ModInitializationPlan Initialize(WorkspaceConfiguration configuration)
     {

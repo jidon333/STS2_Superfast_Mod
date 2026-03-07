@@ -16,11 +16,13 @@ Snapshot these files into a workspace-owned folder:
 - `current_run.save`
 - `current_run.save.backup`
 
-Use the dry-run commands first:
+Use the dry-run commands first, then create a real snapshot:
 
 ```powershell
 dotnet run --project src/Sts2Speed.Tool -- dry-run-snapshot
 dotnet run --project src/Sts2Speed.Tool -- dry-run-restore
+dotnet run --project src/Sts2Speed.Tool -- snapshot
+dotnet run --project src/Sts2Speed.Tool -- verify-snapshot --snapshot-root artifacts/snapshots/<timestamp>
 ```
 
 ## Failure criteria
@@ -34,7 +36,7 @@ dotnet run --project src/Sts2Speed.Tool -- dry-run-restore
 If one of these happens:
 
 1. Disable the mod or remove the copied mod folder from the test install.
-2. Restore the saved snapshot files.
+2. Restore the saved snapshot files with `dotnet run --project src/Sts2Speed.Tool -- restore --snapshot-root artifacts/snapshots/<timestamp>`.
 3. Verify the Steam install if the copied test install is not being used.
 
 ## Out of scope
@@ -42,3 +44,8 @@ If one of these happens:
 - Live binary patching
 - Multiplayer synchronization patches
 - Any automatic write to the user's active settings or save files
+
+## Deployment reminder
+
+- Confirm the actual mod scan directory before running `deploy-package --mod-root ...`.
+- If `discover-mod-path` cannot produce an exact path from logs, verify the path in the in-game Modding UI first.
