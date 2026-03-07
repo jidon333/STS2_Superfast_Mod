@@ -1,0 +1,8 @@
+; Minimal project template for building native STS2 mod .pck files with --export-pack.
+
+config_version=5
+
+[application]
+
+config/name="STS2 Native Export Template"
+run/main_scene="res://placeholder.tscn"

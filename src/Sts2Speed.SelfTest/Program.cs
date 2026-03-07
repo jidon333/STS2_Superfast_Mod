@@ -6,9 +6,11 @@ var failures = new List<string>();
 
 Run("environment overrides win over config", TestEnvironmentOverrides, failures);
 Run("missing fast mode env override is ignored", TestMissingFastModeOverride, failures);
+Run("runtime settings infer enablement from shared speed file", TestRuntimeSettingsSharedMultiplier, failures);
 Run("preserveGameSettings blocks live mutation", TestMutationPolicy, failures);
 Run("snapshot planner includes required files", TestSnapshotPlanner, failures);
 Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVerification, failures);
+Run("strict restore removes files created after snapshot", TestStrictRestoreRemovesCreatedFiles, failures);
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
 Run("manifest contains expected metadata", TestManifestTemplate, failures);
 Run("materialized package contains launcher assets", TestMaterializePackage, failures);
@@ -98,6 +100,28 @@ static void TestMissingFastModeOverride()
     Assert(result.AppliedEnvironmentOverrides.Count == 0, "Null fast mode environment values should not be reported as applied.");
 }
 
+static void TestRuntimeSettingsSharedMultiplier()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var modRoot = Path.Combine(root, "mods", "Sts2Speed");
+        Directory.CreateDirectory(modRoot);
+        File.WriteAllText(Path.Combine(modRoot, "Sts2Speed.speed.txt"), "2.0");
+
+        var settings = RuntimeSettingsLoader.Load(modRoot);
+
+        Assert(settings.Enabled, "Shared multiplier should implicitly enable the runtime payload when no explicit enabled override exists.");
+        Assert(Math.Abs(settings.SpineTimeScale - 2.0) < 0.0001, "Shared multiplier should set spineTimeScale.");
+        Assert(Math.Abs(settings.QueueWaitScale - 2.0) < 0.0001, "Shared multiplier should set queueWaitScale.");
+        Assert(Math.Abs(settings.EffectDelayScale - 2.0) < 0.0001, "Shared multiplier should set effectDelayScale.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
 static void TestSnapshotPlanner()
 {
     var options = new GamePathOptions
@@ -185,6 +209,44 @@ static void TestSnapshotExecutionAndVerification()
     }
 }
 
+static void TestStrictRestoreRemovesCreatedFiles()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var snapshotRoot = Path.Combine(root, "snapshot");
+        var createdFilePath = Path.Combine(root, "game", "override.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(createdFilePath)!);
+        File.WriteAllText(createdFilePath, "created later");
+
+        var snapshot = new SnapshotExecutionResult(
+            snapshotRoot,
+            Path.Combine(snapshotRoot, "snapshot-report.json"),
+            DateTimeOffset.UtcNow,
+            new[]
+            {
+                new SnapshotExecutionEntry(
+                    "GameInstall",
+                    createdFilePath,
+                    Path.Combine(snapshotRoot, "game", "override.cfg"),
+                    false,
+                    "missing",
+                    null,
+                    null),
+            },
+            Array.Empty<string>());
+
+        var restore = SnapshotExecutor.ExecuteRestoreToSnapshotState(snapshot);
+
+        Assert(!File.Exists(createdFilePath), "Strict restore should delete files that did not exist at snapshot time.");
+        Assert(restore.Entries.Any(entry => entry.Status == "deleted-created-after-snapshot"), "Strict restore should report deletion of created files.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
 static void TestManifestTemplate()
 {
     var descriptor = SpeedModEntryPoint.CreateDescriptor();
@@ -242,9 +304,10 @@ static void TestMaterializeNativePackage()
 
         var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory, "subdir");
 
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "mod_manifest.json")), "Native staging package should include mod_manifest.json.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "README.native.txt")), "Native staging package should include a native README.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "Sts2Speed.speed.txt")), "Native staging package should include a text multiplier file.");
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "Sts2Speed.ModSkeleton.dll")), "Native staging package should include the primary managed payload.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, "sts2-speed-skeleton.dll")), "Native staging package should include the pck-matching managed payload.");
         Assert(result.MissingArtifacts.Any(artifact => artifact.RelativePath.EndsWith(".pck", StringComparison.OrdinalIgnoreCase)), "Native staging package should report that a .pck artifact is still missing.");
         Assert(result.LayoutKind == "subdir", "Native staging package should normalize the requested layout kind.");
     }

@@ -53,6 +53,31 @@ try
                 return 0;
             }
 
+        case "build-native-pck":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
+                var layoutKind = options.TryGetValue("--layout", out var requestedLayout)
+                    ? requestedLayout
+                    : "subdir";
+                var godotExecutablePath = ResolveGodotExecutablePath(options, workspaceRoot);
+                var result = SpeedModEntryPoint.BuildNativePck(configuration, outputRoot, runtimeAssemblyRoot, layoutKind, godotExecutablePath, workspaceRoot);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "deploy-native-package":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
+                var layoutKind = options.TryGetValue("--layout", out var requestedLayout)
+                    ? requestedLayout
+                    : "subdir";
+                var result = SpeedModEntryPoint.DeployNativePackage(configuration, outputRoot, runtimeAssemblyRoot, layoutKind);
+                PrintJson(result);
+                return 0;
+            }
+
         case "materialize-gumm-game-entry":
             {
                 var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
@@ -118,6 +143,15 @@ try
                 var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
                 var plan = ResolveRestorePlan(snapshotRoot, configuration.GamePaths);
                 var result = SnapshotExecutor.ExecuteRestore(plan);
+                PrintJson(result);
+                return 0;
+            }
+
+        case "restore-snapshot-state":
+            {
+                var snapshotRoot = ResolveSnapshotRoot(options, configuration, workspaceRoot);
+                var snapshot = SnapshotExecutor.LoadSnapshotExecutionResult(snapshotRoot);
+                var result = SnapshotExecutor.ExecuteRestoreToSnapshotState(snapshot);
                 PrintJson(result);
                 return 0;
             }
@@ -225,6 +259,16 @@ static string ResolveRuntimeAssemblyRoot(IReadOnlyDictionary<string, string> opt
     return AppContext.BaseDirectory;
 }
 
+static string ResolveGodotExecutablePath(IReadOnlyDictionary<string, string> options, string workspaceRoot)
+{
+    if (options.TryGetValue("--godot-exe", out var explicitPath))
+    {
+        return Path.GetFullPath(explicitPath, workspaceRoot);
+    }
+
+    return Path.Combine(workspaceRoot, "artifacts", "tools", "Godot_v4.5.1-stable_win64", "Godot_v4.5.1-stable_win64_console.exe");
+}
+
 static string ResolvePackageRoot(
     IReadOnlyDictionary<string, string> options,
     WorkspaceConfiguration configuration,
@@ -293,6 +337,8 @@ static void WriteUsage()
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-package [--config path] [--artifacts-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-package [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-native-package [--config path] [--artifacts-root path] [--runtime-assembly-root path] [--layout flat|subdir]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- build-native-pck [--config path] [--artifacts-root path] [--runtime-assembly-root path] [--layout flat|subdir] [--godot-exe path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- deploy-native-package [--config path] [--artifacts-root path] [--runtime-assembly-root path] [--layout flat|subdir]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- materialize-gumm-game-entry [--config path] [--artifacts-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- deploy-package --mod-root path [--config path] [--artifacts-root path] [--runtime-assembly-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- install-gumm-loader [--config path] [--package-root path] [--gumm-repo-root path]");
@@ -301,6 +347,7 @@ static void WriteUsage()
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- snapshot [--config path] [--snapshot-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- dry-run-restore [--config path] [--snapshot-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- restore [--config path] [--snapshot-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- restore-snapshot-state [--config path] [--snapshot-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- verify-snapshot [--snapshot-root path]");
 }
 

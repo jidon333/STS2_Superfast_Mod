@@ -142,6 +142,64 @@ public static class SnapshotExecutor
         return result;
     }
 
+    public static RestoreExecutionResult ExecuteRestoreToSnapshotState(SnapshotExecutionResult snapshot, string? reportPath = null)
+    {
+        Directory.CreateDirectory(snapshot.SnapshotRoot);
+
+        var entries = new List<RestoreExecutionEntry>();
+        foreach (var entry in snapshot.Entries)
+        {
+            if (entry.SourceExistedAtSnapshot)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(entry.SourcePath)!);
+                File.Copy(entry.BackupPath, entry.SourcePath, overwrite: true);
+
+                var info = new FileInfo(entry.SourcePath);
+                entries.Add(new RestoreExecutionEntry(
+                    entry.BackupPath,
+                    entry.SourcePath,
+                    true,
+                    "restored",
+                    info.Length,
+                    ComputeSha256(entry.SourcePath)));
+                continue;
+            }
+
+            if (File.Exists(entry.SourcePath))
+            {
+                File.Delete(entry.SourcePath);
+                entries.Add(new RestoreExecutionEntry(
+                    entry.BackupPath,
+                    entry.SourcePath,
+                    false,
+                    "deleted-created-after-snapshot",
+                    null,
+                    null));
+                continue;
+            }
+
+            entries.Add(new RestoreExecutionEntry(
+                entry.BackupPath,
+                entry.SourcePath,
+                false,
+                "already-missing",
+                null,
+                null));
+        }
+
+        var finalReportPath = reportPath ?? SnapshotPlanner.BuildRestoreReportPath(snapshot.SnapshotRoot);
+        Directory.CreateDirectory(Path.GetDirectoryName(finalReportPath)!);
+
+        var result = new RestoreExecutionResult(
+            snapshot.SnapshotRoot,
+            finalReportPath,
+            DateTimeOffset.UtcNow,
+            entries);
+
+        WriteJson(finalReportPath, result);
+        return result;
+    }
+
     public static SnapshotVerificationResult VerifySnapshot(SnapshotExecutionResult snapshot)
     {
         var entries = new List<SnapshotVerificationEntry>();
