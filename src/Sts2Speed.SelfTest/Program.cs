@@ -11,6 +11,7 @@ Run("preserveGameSettings blocks live mutation", TestMutationPolicy, failures);
 Run("snapshot planner includes required files", TestSnapshotPlanner, failures);
 Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVerification, failures);
 Run("strict restore removes files created after snapshot", TestStrictRestoreRemovesCreatedFiles, failures);
+Run("modded profile sync mirrors vanilla profile after backing up destination", TestModdedProfileSync, failures);
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
 Run("manifest contains expected metadata", TestManifestTemplate, failures);
 Run("materialized package contains launcher assets", TestMaterializePackage, failures);
@@ -240,6 +241,46 @@ static void TestStrictRestoreRemovesCreatedFiles()
 
         Assert(!File.Exists(createdFilePath), "Strict restore should delete files that did not exist at snapshot time.");
         Assert(restore.Entries.Any(entry => entry.Status == "deleted-created-after-snapshot"), "Strict restore should report deletion of created files.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestModdedProfileSync()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var userDataRoot = Path.Combine(root, "userdata");
+        var steamRoot = Path.Combine(userDataRoot, "steam", "1234567890");
+        var sourceRoot = Path.Combine(steamRoot, "profile1");
+        var destinationRoot = Path.Combine(steamRoot, "modded", "profile1");
+        var sourceSaves = Path.Combine(sourceRoot, "saves");
+        var destinationSaves = Path.Combine(destinationRoot, "saves");
+        Directory.CreateDirectory(sourceSaves);
+        Directory.CreateDirectory(destinationSaves);
+
+        File.WriteAllText(Path.Combine(sourceSaves, "progress.save"), "vanilla-progress");
+        File.WriteAllText(Path.Combine(sourceSaves, "prefs.save"), "vanilla-prefs");
+        File.WriteAllText(Path.Combine(destinationSaves, "progress.save"), "old-modded-progress");
+
+        var options = new GamePathOptions
+        {
+            GameDirectory = Path.Combine(root, "game"),
+            UserDataRoot = userDataRoot,
+            SteamAccountId = "1234567890",
+            ProfileIndex = 1,
+            ArtifactsRoot = Path.Combine(root, "artifacts"),
+        };
+
+        var result = ModdedProfileSync.SyncVanillaToModded(options, options.ArtifactsRoot, new DateTimeOffset(2026, 3, 7, 12, 0, 0, TimeSpan.Zero));
+
+        Assert(File.Exists(Path.Combine(result.BackupRoot, "modded-profile-before-sync", "saves", "progress.save")), "Sync should back up the previous modded progress.");
+        Assert(File.ReadAllText(Path.Combine(destinationSaves, "progress.save")) == "vanilla-progress", "Sync should replace modded progress with vanilla progress.");
+        Assert(File.ReadAllText(Path.Combine(destinationSaves, "prefs.save")) == "vanilla-prefs", "Sync should copy additional vanilla files.");
+        Assert(result.Files.Count == 2, $"Expected two copied files but received {result.Files.Count}.");
     }
     finally
     {

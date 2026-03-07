@@ -108,7 +108,25 @@ manifest가 유효하면 로더는 매칭 DLL을 로드한다.
 - `queueWaitScale`: `CustomScaledWait` 계열 대기시간 단축
 - `effectDelayScale`: timer 기반 지연 단축
 
-## 9. 로그
+## 9. 저장 경로 분리
+
+모드가 하나라도 로드되면 게임은 `modded/profileN` 쪽 저장 경로를 사용한다.
+
+이건 안전장치이면서 동시에 혼동 포인트다.
+
+- vanilla 진행과 modded 진행이 분리된다.
+- modded 쪽이 비어 있으면 새 프로필처럼 보인다.
+- 복구가 필요하면 `profileN -> modded/profileN` 복제가 필요하다.
+
+이 저장소에서는 다음 명령으로 자동 복구할 수 있다.
+
+```powershell
+dotnet run --project src/Sts2Speed.Tool -- sync-modded-profile
+```
+
+이 명령은 기존 `modded/profileN`을 먼저 백업하고 나서 복제한다.
+
+## 10. 로그
 
 게임 로그에는 로더 수준의 성공 여부가 남는다.
 
@@ -128,12 +146,3 @@ manifest가 유효하면 로더는 매칭 DLL을 로드한다.
 - 초기 설정 로드
 - 설정 변경 감지
 - 패치 적용 1회 로그
-
-## 10. 저장 경로
-
-모드가 하나라도 로드되면 게임은 `modded/profile1` 쪽 저장 경로를 사용한다.
-
-이건 안전상 꽤 중요하다.
-
-- vanilla 진행과 modded 진행이 분리된다.
-- 다만 `settings.save` 는 여전히 공용이므로, `mods_enabled` 같은 설정은 공유될 수 있다.

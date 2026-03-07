@@ -12,6 +12,8 @@
 - `.pck`는 Godot 공식 `--export-pack` 경로로 생성 가능하다.
 - `sts2-speed-skeleton.pck + sts2-speed-skeleton.dll` 조합이 실제로 로드되고, 게임 로그에 `Finished mod initialization`과 `--- RUNNING MODDED! ---`가 찍힌다.
 - 모드가 켜지면 저장 경로는 `user://steam/<계정>/modded/profile1`로 분리된다.
+- 이 때문에 모드를 처음 켰을 때 진행이 초기화된 것처럼 보일 수 있다.
+- `sync-modded-profile` 명령으로 `profile1 -> modded/profile1` 복구를 자동화했다. 기존 modded 프로필은 먼저 백업한다.
 - 현재 실제 패치는 들어가 있다.
   - `MegaAnimationState.SetTimeScale`
   - `MegaTrackEntry.SetTimeScale`
@@ -22,6 +24,7 @@
 ## 지금 되는 것
 
 - 백업 생성, 검증, 복구
+- vanilla 프로필을 modded 프로필로 복제하는 복구
 - GUMM 경로 부트스트랩 검증
 - 네이티브 `mods + pck + dll + txt` 경로 검증
 - Godot 공식 `.pck` 생성
@@ -44,6 +47,7 @@ dotnet run --project src/Sts2Speed.SelfTest
 dotnet run --project src/Sts2Speed.Tool -- snapshot --snapshot-root artifacts/snapshots/<name>
 dotnet run --project src/Sts2Speed.Tool -- verify-snapshot --snapshot-root artifacts/snapshots/<name>
 dotnet run --project src/Sts2Speed.Tool -- restore-snapshot-state --snapshot-root artifacts/snapshots/<name>
+dotnet run --project src/Sts2Speed.Tool -- sync-modded-profile
 dotnet run --project src/Sts2Speed.Tool -- build-native-pck --layout flat
 dotnet run --project src/Sts2Speed.Tool -- deploy-native-package --layout flat
 ```
@@ -55,6 +59,7 @@ dotnet run --project src/Sts2Speed.Tool -- deploy-native-package --layout flat
 - `Sts2Speed.Core.dll`은 자동으로 로드되지 않아서, 모드 DLL 안에서 별도 assembly resolver를 등록해야 했다.
 - 현재 resolver는 `mods` 폴더를 기준으로 추가 DLL을 찾는다.
 - 런타임 진단 로그는 `mods\sts2speed.runtime.log` 에 기록된다.
+- 진행 데이터가 vanilla `profileN`에만 있고 modded `profileN`이 비어 있으면, 모드 실행 시 새 프로필처럼 보인다.
 
 ## 문서
 

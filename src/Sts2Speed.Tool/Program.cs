@@ -165,6 +165,14 @@ try
                 return result.AllEntriesMatch ? 0 : 1;
             }
 
+        case "sync-modded-profile":
+            {
+                var outputRoot = ResolveArtifactsRoot(configuration, workspaceRoot);
+                var result = ModdedProfileSync.SyncVanillaToModded(configuration.GamePaths, outputRoot);
+                PrintJson(result);
+                return 0;
+            }
+
         default:
             WriteUsage();
             return 0;
@@ -349,6 +357,7 @@ static void WriteUsage()
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- restore [--config path] [--snapshot-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- restore-snapshot-state [--config path] [--snapshot-root path]");
     Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- verify-snapshot [--snapshot-root path]");
+    Console.WriteLine("  dotnet run --project src/Sts2Speed.Tool -- sync-modded-profile [--config path] [--artifacts-root path]");
 }
 
 static void PrintJson<T>(T value)
