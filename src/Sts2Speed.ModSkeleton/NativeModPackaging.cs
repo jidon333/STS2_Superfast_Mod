@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Text.Json;
 using Sts2Speed.Core.Configuration;
 
@@ -84,8 +83,8 @@ public static partial class SpeedModEntryPoint
         };
         files.Add(WriteNativeTextFile(
             packageRoot,
-            "Sts2Speed.speed.txt",
-            BuildSharedSpeedFileContents(configuration.Settings, warnings),
+            RuntimeSettingsLoader.RuntimeConfigFileName,
+            BuildRuntimeConfigContents(configuration.Settings),
             "generated"));
 
         var primaryAssemblySourcePath = Path.Combine(runtimeAssemblyRoot, "Sts2Speed.ModSkeleton.dll");
@@ -278,12 +277,12 @@ public static partial class SpeedModEntryPoint
 
     private static string NormalizeNativeLayoutKind(string? layoutKind)
     {
-        if (string.Equals(layoutKind, "flat", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(layoutKind, "subdir", StringComparison.OrdinalIgnoreCase))
         {
-            return "flat";
+            return "subdir";
         }
 
-        return "subdir";
+        return "flat";
     }
 
     private static NativePackageFile WriteNativeTextFile(
@@ -324,20 +323,9 @@ public static partial class SpeedModEntryPoint
         return JsonSerializer.Serialize(manifest, JsonOptions);
     }
 
-    private static string BuildSharedSpeedFileContents(SpeedModSettings settings, ICollection<string> warnings)
+    private static string BuildRuntimeConfigContents(SpeedModSettings settings)
     {
-        if (!AreEquivalent(settings.SpineTimeScale, settings.QueueWaitScale)
-            || !AreEquivalent(settings.SpineTimeScale, settings.EffectDelayScale))
-        {
-            warnings.Add("settings.spineTimeScale, queueWaitScale, effectDelayScale differ. Sts2Speed.speed.txt can store only one shared multiplier, so the packaged default uses spineTimeScale.");
-        }
-
-        return settings.SpineTimeScale.ToString("0.###", CultureInfo.InvariantCulture) + Environment.NewLine;
-    }
-
-    private static bool AreEquivalent(double left, double right)
-    {
-        return Math.Abs(left - right) < 0.0001;
+        return JsonSerializer.Serialize(settings, JsonOptions);
     }
 
     private static void RecreateDirectory(string path)

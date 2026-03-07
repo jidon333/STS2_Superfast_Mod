@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "baseSpeed": 3,
+  "combatOnly": true,
+  "spineSpeed": 1,
+  "queueSpeed": 1,
+  "effectSpeed": 1,
+  "combatUiSpeed": 1,
+  "combatVfxSpeed": 1
+}

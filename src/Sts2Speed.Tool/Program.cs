@@ -30,7 +30,7 @@ try
                 var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
                 var layoutKind = options.TryGetValue("--layout", out var requestedLayout)
                     ? requestedLayout
-                    : "subdir";
+                    : "flat";
                 var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, outputRoot, runtimeAssemblyRoot, layoutKind);
                 PrintJson(result);
                 return 0;
@@ -42,7 +42,7 @@ try
                 var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
                 var layoutKind = options.TryGetValue("--layout", out var requestedLayout)
                     ? requestedLayout
-                    : "subdir";
+                    : "flat";
                 var godotExecutablePath = ResolveGodotExecutablePath(options, workspaceRoot);
                 var result = SpeedModEntryPoint.BuildNativePck(configuration, outputRoot, runtimeAssemblyRoot, layoutKind, godotExecutablePath, workspaceRoot);
                 PrintJson(result);
@@ -55,7 +55,7 @@ try
                 var runtimeAssemblyRoot = ResolveRuntimeAssemblyRoot(options, workspaceRoot);
                 var layoutKind = options.TryGetValue("--layout", out var requestedLayout)
                     ? requestedLayout
-                    : "subdir";
+                    : "flat";
                 var result = SpeedModEntryPoint.DeployNativePackage(configuration, outputRoot, runtimeAssemblyRoot, layoutKind);
                 PrintJson(result);
                 return 0;
@@ -172,9 +172,18 @@ static IReadOnlyDictionary<string, string?> ReadEnvironment()
     return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
     {
         [EnvironmentOverrideNames.Enabled] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.Enabled),
-        [EnvironmentOverrideNames.SpineTimeScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.SpineTimeScale),
-        [EnvironmentOverrideNames.QueueWaitScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.QueueWaitScale),
-        [EnvironmentOverrideNames.EffectDelayScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.EffectDelayScale),
+        [EnvironmentOverrideNames.BaseSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.BaseSpeed),
+        [EnvironmentOverrideNames.CombatOnly] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.CombatOnly),
+        [EnvironmentOverrideNames.SpineSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.SpineSpeed),
+        [EnvironmentOverrideNames.QueueSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.QueueSpeed),
+        [EnvironmentOverrideNames.EffectSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.EffectSpeed),
+        [EnvironmentOverrideNames.CombatUiSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.CombatUiSpeed),
+        [EnvironmentOverrideNames.CombatVfxSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.CombatVfxSpeed),
+        [EnvironmentOverrideNames.LegacySpineFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacySpineFactor),
+        [EnvironmentOverrideNames.LegacyQueueWaitFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyQueueWaitFactor),
+        [EnvironmentOverrideNames.LegacyEffectDelayFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyEffectDelayFactor),
+        [EnvironmentOverrideNames.LegacyCombatUiDeltaFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyCombatUiDeltaFactor),
+        [EnvironmentOverrideNames.LegacyCombatVfxDeltaFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyCombatVfxDeltaFactor),
     };
 }
 

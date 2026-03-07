@@ -1,12 +1,24 @@
+using System.Globalization;
+
 namespace Sts2Speed.Core.Configuration;
 
 public static class EnvironmentOverrideNames
 {
     public const string Prefix = "STS2_SPEED_";
     public const string Enabled = Prefix + "ENABLED";
-    public const string SpineTimeScale = Prefix + "SPINE_TIME_SCALE";
-    public const string QueueWaitScale = Prefix + "QUEUE_WAIT_SCALE";
-    public const string EffectDelayScale = Prefix + "EFFECT_DELAY_SCALE";
+    public const string BaseSpeed = Prefix + "BASE_SPEED";
+    public const string CombatOnly = Prefix + "COMBAT_ONLY";
+    public const string SpineSpeed = Prefix + "SPINE_SPEED";
+    public const string QueueSpeed = Prefix + "QUEUE_SPEED";
+    public const string EffectSpeed = Prefix + "EFFECT_SPEED";
+    public const string CombatUiSpeed = Prefix + "COMBAT_UI_SPEED";
+    public const string CombatVfxSpeed = Prefix + "COMBAT_VFX_SPEED";
+
+    public const string LegacySpineFactor = Prefix + "SPINE_FACTOR";
+    public const string LegacyQueueWaitFactor = Prefix + "QUEUE_WAIT_FACTOR";
+    public const string LegacyEffectDelayFactor = Prefix + "EFFECT_DELAY_FACTOR";
+    public const string LegacyCombatUiDeltaFactor = Prefix + "COMBAT_UI_DELTA_FACTOR";
+    public const string LegacyCombatVfxDeltaFactor = Prefix + "COMBAT_VFX_DELTA_FACTOR";
 }
 
 public sealed record EnvironmentOverrideResult
@@ -28,9 +40,38 @@ public static class EnvironmentOverrideReader
         var settings = new PartialSpeedModSettings
         {
             Enabled = ReadBoolean(map, EnvironmentOverrideNames.Enabled, applied, warnings),
-            SpineTimeScale = ReadDouble(map, EnvironmentOverrideNames.SpineTimeScale, applied, warnings),
-            QueueWaitScale = ReadDouble(map, EnvironmentOverrideNames.QueueWaitScale, applied, warnings),
-            EffectDelayScale = ReadDouble(map, EnvironmentOverrideNames.EffectDelayScale, applied, warnings),
+            BaseSpeed = ReadDouble(map, EnvironmentOverrideNames.BaseSpeed, applied, warnings),
+            CombatOnly = ReadBoolean(map, EnvironmentOverrideNames.CombatOnly, applied, warnings),
+            SpineSpeed = ReadDoubleWithLegacy(
+                map,
+                EnvironmentOverrideNames.SpineSpeed,
+                EnvironmentOverrideNames.LegacySpineFactor,
+                applied,
+                warnings),
+            QueueSpeed = ReadDoubleWithLegacy(
+                map,
+                EnvironmentOverrideNames.QueueSpeed,
+                EnvironmentOverrideNames.LegacyQueueWaitFactor,
+                applied,
+                warnings),
+            EffectSpeed = ReadDoubleWithLegacy(
+                map,
+                EnvironmentOverrideNames.EffectSpeed,
+                EnvironmentOverrideNames.LegacyEffectDelayFactor,
+                applied,
+                warnings),
+            CombatUiSpeed = ReadDoubleWithLegacy(
+                map,
+                EnvironmentOverrideNames.CombatUiSpeed,
+                EnvironmentOverrideNames.LegacyCombatUiDeltaFactor,
+                applied,
+                warnings),
+            CombatVfxSpeed = ReadDoubleWithLegacy(
+                map,
+                EnvironmentOverrideNames.CombatVfxSpeed,
+                EnvironmentOverrideNames.LegacyCombatVfxDeltaFactor,
+                applied,
+                warnings),
         };
 
         return new EnvironmentOverrideResult
@@ -73,7 +114,7 @@ public static class EnvironmentOverrideReader
             return null;
         }
 
-        if (double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
         {
             applied.Add(name);
             return value;
@@ -81,5 +122,27 @@ public static class EnvironmentOverrideReader
 
         warnings.Add($"Ignored {name}: expected number but received '{raw}'.");
         return null;
+    }
+
+    private static double? ReadDoubleWithLegacy(
+        IReadOnlyDictionary<string, string?> environment,
+        string primaryName,
+        string legacyName,
+        ICollection<string> applied,
+        ICollection<string> warnings)
+    {
+        var primary = ReadDouble(environment, primaryName, applied, warnings);
+        if (primary.HasValue)
+        {
+            return primary;
+        }
+
+        var legacy = ReadDouble(environment, legacyName, applied, warnings);
+        if (legacy.HasValue)
+        {
+            warnings.Add($"Loaded legacy environment override {legacyName}. Prefer {primaryName}.");
+        }
+
+        return legacy;
     }
 }

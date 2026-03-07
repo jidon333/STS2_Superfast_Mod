@@ -7,6 +7,7 @@ namespace Sts2Speed.ModSkeleton.Runtime;
 internal static class RuntimePatchContext
 {
     private static readonly object Sync = new();
+    private static readonly string ModDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? AppContext.BaseDirectory;
     private static readonly HashSet<string> MissingTargets = new(StringComparer.Ordinal);
     private static readonly HashSet<string> AppliedLogs = new(StringComparer.Ordinal);
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(500);
@@ -18,27 +19,40 @@ internal static class RuntimePatchContext
 
     public static RuntimeSpeedSettings GetSettings(bool forceRefresh = false)
     {
+        var cached = _cachedSettings;
+        if (!forceRefresh
+            && cached is not null
+            && DateTimeOffset.UtcNow - _lastLoadedAt < RefreshInterval)
+        {
+            return cached;
+        }
+
         lock (Sync)
         {
-            var modDirectory = GetModDirectory();
-            var configWriteUtc = GetConfigWriteUtc(modDirectory);
-            var shouldRefresh = forceRefresh
-                || _cachedSettings is null
-                || DateTimeOffset.UtcNow - _lastLoadedAt >= RefreshInterval
-                || configWriteUtc != _lastObservedConfigWriteUtc;
-
-            if (!shouldRefresh)
+            cached = _cachedSettings;
+            if (!forceRefresh
+                && cached is not null
+                && DateTimeOffset.UtcNow - _lastLoadedAt < RefreshInterval)
             {
-                return _cachedSettings!;
+                return cached;
             }
 
-            _cachedSettings = RuntimeSettingsLoader.Load(modDirectory);
+            var configWriteUtc = GetConfigWriteUtc();
+            if (!forceRefresh
+                && cached is not null
+                && configWriteUtc == _lastObservedConfigWriteUtc)
+            {
+                _lastLoadedAt = DateTimeOffset.UtcNow;
+                return cached;
+            }
+
+            _cachedSettings = RuntimeSettingsLoader.Load(ModDirectory);
             _lastLoadedAt = DateTimeOffset.UtcNow;
             _lastObservedConfigWriteUtc = configWriteUtc;
 
             if (!_moduleAnnouncementWritten)
             {
-                WriteLine($"module loaded from '{modDirectory}'. initial settings: {Describe(_cachedSettings)}");
+                WriteLine($"module loaded from '{ModDirectory}'. initial settings: {Describe(_cachedSettings)}");
                 foreach (var warning in _cachedSettings.Warnings)
                 {
                     WriteLine($"settings warning: {warning}");
@@ -76,37 +90,61 @@ internal static class RuntimePatchContext
     public static bool TryApplySpineScale(ref float scale)
     {
         var settings = GetSettings();
-        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.SpineTimeScale))
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.SpineSpeed))
         {
             return false;
         }
 
-        scale = SpeedScaleMath.ApplyAnimationSpeedMultiplier(scale, settings.SpineTimeScale);
+        scale = SpeedScaleMath.ApplyAnimationSpeedMultiplier(scale, settings.SpineSpeed);
+        return true;
+    }
+
+    public static bool TryApplyCombatUiDelta(ref double delta)
+    {
+        var settings = GetSettings();
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.CombatUiSpeed))
+        {
+            return false;
+        }
+
+        delta = SpeedScaleMath.ApplyFrameDeltaSpeedMultiplier(delta, settings.CombatUiSpeed);
+        return true;
+    }
+
+    public static bool TryApplyCombatVfxDelta(ref double delta)
+    {
+        var settings = GetSettings();
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.CombatVfxSpeed))
+        {
+            return false;
+        }
+
+        delta = SpeedScaleMath.ApplyFrameDeltaSpeedMultiplier(delta, settings.CombatVfxSpeed);
         return true;
     }
 
     public static bool TryApplyQueueWaitScale(ref float fastSeconds, ref float standardSeconds)
     {
         var settings = GetSettings();
-        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.QueueWaitScale))
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.QueueSpeed))
         {
             return false;
         }
 
-        fastSeconds = SpeedScaleMath.ApplyDurationSpeedMultiplier(fastSeconds, settings.QueueWaitScale);
-        standardSeconds = SpeedScaleMath.ApplyDurationSpeedMultiplier(standardSeconds, settings.QueueWaitScale);
+        fastSeconds = SpeedScaleMath.ApplyDurationSpeedMultiplier(fastSeconds, settings.QueueSpeed);
+        standardSeconds = SpeedScaleMath.ApplyDurationSpeedMultiplier(standardSeconds, settings.QueueSpeed);
         return true;
     }
 
     public static bool TryApplyEffectDelayScale(ref double timeSec)
     {
         var settings = GetSettings();
-        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.EffectDelayScale))
+        if (!ShouldApply(settings) || !SpeedScaleMath.HasMeaningfulEffect(settings.EffectSpeed))
         {
             return false;
         }
 
-        timeSec = SpeedScaleMath.ApplyDurationSpeedMultiplier(timeSec, settings.EffectDelayScale);
+        timeSec = SpeedScaleMath.ApplyDurationSpeedMultiplier(timeSec, settings.EffectSpeed);
         return true;
     }
 
@@ -144,18 +182,15 @@ internal static class RuntimePatchContext
         WriteLine(detail);
     }
 
-    private static string GetModDirectory()
+    private static DateTime GetConfigWriteUtc()
     {
-        var location = Assembly.GetExecutingAssembly().Location;
-        return Path.GetDirectoryName(location) ?? AppContext.BaseDirectory;
-    }
-
-    private static DateTime GetConfigWriteUtc(string modDirectory)
-    {
-        var configPath = Path.Combine(modDirectory, "Sts2Speed.speed.txt");
-        return File.Exists(configPath)
-            ? File.GetLastWriteTimeUtc(configPath)
+        var configWriteUtc = File.Exists(Path.Combine(ModDirectory, RuntimeSettingsLoader.RuntimeConfigFileName))
+            ? File.GetLastWriteTimeUtc(Path.Combine(ModDirectory, RuntimeSettingsLoader.RuntimeConfigFileName))
             : DateTime.MinValue;
+        var legacyWriteUtc = File.Exists(Path.Combine(ModDirectory, RuntimeSettingsLoader.LegacySpeedFileName))
+            ? File.GetLastWriteTimeUtc(Path.Combine(ModDirectory, RuntimeSettingsLoader.LegacySpeedFileName))
+            : DateTime.MinValue;
+        return configWriteUtc >= legacyWriteUtc ? configWriteUtc : legacyWriteUtc;
     }
 
     private static void ReportMissingTarget(string key, string detail)
@@ -190,7 +225,7 @@ internal static class RuntimePatchContext
 
     private static string Describe(RuntimeSpeedSettings settings)
     {
-        return $"enabled={settings.Enabled} spine={settings.SpineTimeScale:0.###} queue={settings.QueueWaitScale:0.###} effect={settings.EffectDelayScale:0.###} combatOnly={settings.CombatOnly} sources=[{string.Join(", ", settings.Sources)}]";
+        return $"enabled={settings.Enabled} base={settings.BaseSpeed:0.###} spine={settings.SpineSpeed:0.###} queue={settings.QueueSpeed:0.###} effect={settings.EffectSpeed:0.###} combatUi={settings.CombatUiSpeed:0.###} combatVfx={settings.CombatVfxSpeed:0.###} combatOnly={settings.CombatOnly} sources=[{string.Join(", ", settings.Sources)}]";
     }
 
     private static void WriteLine(string message)
@@ -200,7 +235,7 @@ internal static class RuntimePatchContext
 
         try
         {
-            var logPath = Path.Combine(GetModDirectory(), "sts2speed.runtime.log");
+            var logPath = Path.Combine(ModDirectory, "sts2speed.runtime.log");
             File.AppendAllText(logPath, formatted + Environment.NewLine);
         }
         catch

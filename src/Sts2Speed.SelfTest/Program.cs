@@ -5,7 +5,9 @@ using Sts2Speed.ModSkeleton;
 var failures = new List<string>();
 
 Run("environment overrides win over config", TestEnvironmentOverrides, failures);
-Run("runtime settings infer enablement from shared speed file", TestRuntimeSettingsSharedMultiplier, failures);
+Run("runtime settings load flat json config", TestRuntimeSettingsFlatJson, failures);
+Run("runtime settings still support legacy grouped json config", TestRuntimeSettingsLegacyGroupedJson, failures);
+Run("runtime settings still support legacy speed txt", TestRuntimeSettingsLegacyFallback, failures);
 Run("speed multiplier semantics shrink wait durations", TestSpeedMultiplierSemantics, failures);
 Run("snapshot planner includes required files", TestSnapshotPlanner, failures);
 Run("snapshot execution copies and verifies files", TestSnapshotExecutionAndVerification, failures);
@@ -13,7 +15,7 @@ Run("strict restore removes files created after snapshot", TestStrictRestoreRemo
 Run("modded profile sync mirrors vanilla profile after backing up destination", TestModdedProfileSync, failures);
 Run("restore plan mirrors snapshot entries", TestRestorePlan, failures);
 Run("native package staging captures missing pck requirement", TestMaterializeNativePackage, failures);
-Run("native package writes the configured shared multiplier", TestNativePackageSharedMultiplier, failures);
+Run("native package writes the configured json config", TestNativePackageJsonConfig, failures);
 
 if (failures.Count == 0)
 {
@@ -49,9 +51,12 @@ static void TestEnvironmentOverrides()
     {
       "settings": {
         "enabled": false,
-        "spineTimeScale": 2.0,
-        "queueWaitScale": 2.0,
-        "effectDelayScale": 2.0,
+        "baseSpeed": 2.0,
+        "spineSpeed": 1.0,
+        "queueSpeed": 1.0,
+        "effectSpeed": 1.0,
+        "combatUiSpeed": 1.0,
+        "combatVfxSpeed": 1.0,
         "combatOnly": true
       }
     }
@@ -60,34 +65,111 @@ static void TestEnvironmentOverrides()
     var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
     {
         [EnvironmentOverrideNames.Enabled] = "true",
-        [EnvironmentOverrideNames.SpineTimeScale] = "1.75",
-        [EnvironmentOverrideNames.EffectDelayScale] = "1.5",
+        [EnvironmentOverrideNames.BaseSpeed] = "1.75",
+        [EnvironmentOverrideNames.EffectSpeed] = "0.75",
     };
 
     var result = SettingsLoader.LoadFromJson(json, "inline", environment);
 
     Assert(result.Configuration.Settings.Enabled, "Expected env override to enable the mod.");
-    Assert(Math.Abs(result.Configuration.Settings.SpineTimeScale - 1.75) < 0.0001, "Expected spineTimeScale env override.");
-    Assert(Math.Abs(result.Configuration.Settings.QueueWaitScale - 2.0) < 0.0001, "Expected queueWaitScale to remain at the config value.");
-    Assert(Math.Abs(result.Configuration.Settings.EffectDelayScale - 1.5) < 0.0001, "Expected effectDelayScale env override.");
-    Assert(result.AppliedEnvironmentOverrides.Contains(EnvironmentOverrideNames.SpineTimeScale), "Expected spineTimeScale to be reported as an applied override.");
+    Assert(Math.Abs(result.Configuration.Settings.BaseSpeed - 1.75) < 0.0001, "Expected baseSpeed env override.");
+    Assert(Math.Abs(result.Configuration.Settings.QueueSpeed - 1.0) < 0.0001, "Expected queueSpeed coefficient to remain at the config value.");
+    Assert(Math.Abs(result.Configuration.Settings.EffectSpeed - 0.75) < 0.0001, "Expected effectSpeed env override.");
+    Assert(result.AppliedEnvironmentOverrides.Contains(EnvironmentOverrideNames.BaseSpeed), "Expected baseSpeed to be reported as an applied override.");
 }
 
-static void TestRuntimeSettingsSharedMultiplier()
+static void TestRuntimeSettingsFlatJson()
 {
     var root = CreateTempDirectory();
     try
     {
         var modRoot = Path.Combine(root, "mods", "Sts2Speed");
         Directory.CreateDirectory(modRoot);
-        File.WriteAllText(Path.Combine(modRoot, "Sts2Speed.speed.txt"), "2.0");
+        File.WriteAllText(
+            Path.Combine(modRoot, RuntimeSettingsLoader.RuntimeConfigFileName),
+            """
+            {
+              "enabled": true,
+              "baseSpeed": 2.0,
+              "combatOnly": true,
+              "spineSpeed": 1.1,
+              "queueSpeed": 0.9,
+              "effectSpeed": 0.8,
+              "combatUiSpeed": 0.7,
+              "combatVfxSpeed": 1.2
+            }
+            """);
 
         var settings = RuntimeSettingsLoader.Load(modRoot);
 
-        Assert(settings.Enabled, "Shared multiplier should implicitly enable the runtime payload when no explicit enabled override exists.");
-        Assert(Math.Abs(settings.SpineTimeScale - 2.0) < 0.0001, "Shared multiplier should set spineTimeScale.");
-        Assert(Math.Abs(settings.QueueWaitScale - 2.0) < 0.0001, "Shared multiplier should set queueWaitScale.");
-        Assert(Math.Abs(settings.EffectDelayScale - 2.0) < 0.0001, "Shared multiplier should set effectDelayScale.");
+        Assert(settings.Enabled, "Runtime config should enable the payload.");
+        Assert(Math.Abs(settings.BaseSpeed - 2.0) < 0.0001, "Runtime config should set baseSpeed.");
+        Assert(Math.Abs(settings.SpineSpeed - 2.2) < 0.0001, "Expected baseSpeed * spine factor.");
+        Assert(Math.Abs(settings.QueueSpeed - 1.8) < 0.0001, "Expected baseSpeed * queue factor.");
+        Assert(Math.Abs(settings.EffectSpeed - 1.6) < 0.0001, "Expected baseSpeed * effect factor.");
+        Assert(Math.Abs(settings.CombatUiSpeed - 1.4) < 0.0001, "Expected baseSpeed * combatUi factor.");
+        Assert(Math.Abs(settings.CombatVfxSpeed - 2.4) < 0.0001, "Expected baseSpeed * combatVfx factor.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestRuntimeSettingsLegacyGroupedJson()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var modRoot = Path.Combine(root, "mods", "Sts2Speed");
+        Directory.CreateDirectory(modRoot);
+        File.WriteAllText(
+            Path.Combine(modRoot, RuntimeSettingsLoader.RuntimeConfigFileName),
+            """
+            {
+              "enabled": true,
+              "baseSpeed": 2.0,
+              "combatOnly": true,
+              "groups": {
+                "spine": 1.1,
+                "queueWait": 0.9,
+                "effectDelay": 0.8,
+                "combatUiDelta": 0.7,
+                "combatVfxDelta": 1.2
+              }
+            }
+            """);
+
+        var settings = RuntimeSettingsLoader.Load(modRoot);
+
+        Assert(settings.Enabled, "Legacy grouped runtime config should still enable the payload.");
+        Assert(Math.Abs(settings.SpineSpeed - 2.2) < 0.0001, "Expected legacy spine factor to remain supported.");
+        Assert(Math.Abs(settings.QueueSpeed - 1.8) < 0.0001, "Expected legacy queue factor to remain supported.");
+        Assert(Math.Abs(settings.EffectSpeed - 1.6) < 0.0001, "Expected legacy effect factor to remain supported.");
+        Assert(Math.Abs(settings.CombatUiSpeed - 1.4) < 0.0001, "Expected legacy combatUi factor to remain supported.");
+        Assert(Math.Abs(settings.CombatVfxSpeed - 2.4) < 0.0001, "Expected legacy combatVfx factor to remain supported.");
+    }
+    finally
+    {
+        SafeDeleteDirectory(root);
+    }
+}
+
+static void TestRuntimeSettingsLegacyFallback()
+{
+    var root = CreateTempDirectory();
+    try
+    {
+        var modRoot = Path.Combine(root, "mods", "Sts2Speed");
+        Directory.CreateDirectory(modRoot);
+        File.WriteAllText(Path.Combine(modRoot, RuntimeSettingsLoader.LegacySpeedFileName), "2.5");
+
+        var settings = RuntimeSettingsLoader.Load(modRoot);
+
+        Assert(settings.Enabled, "Legacy fallback should enable the payload when multiplier differs from 1.");
+        Assert(Math.Abs(settings.BaseSpeed - 2.5) < 0.0001, "Legacy fallback should set baseSpeed.");
+        Assert(Math.Abs(settings.SpineSpeed - 2.5) < 0.0001, "Legacy fallback should map to the default spine factor.");
+        Assert(settings.Sources.Contains(RuntimeSettingsLoader.LegacySpeedFileName), "Expected legacy file to be reported as a settings source.");
     }
     finally
     {
@@ -98,6 +180,7 @@ static void TestRuntimeSettingsSharedMultiplier()
 static void TestSpeedMultiplierSemantics()
 {
     Assert(Math.Abs(SpeedScaleMath.ApplyAnimationSpeedMultiplier(1.0f, 2.0) - 2.0f) < 0.0001, "Animation multipliers should scale up directly.");
+    Assert(Math.Abs(SpeedScaleMath.ApplyFrameDeltaSpeedMultiplier(0.1, 2.0) - 0.2) < 0.0001, "Frame delta multipliers should scale up directly.");
     Assert(Math.Abs(SpeedScaleMath.ApplyDurationSpeedMultiplier(1.0f, 2.0) - 0.5f) < 0.0001, "A 2.0 speed multiplier should halve float wait durations.");
     Assert(Math.Abs(SpeedScaleMath.ApplyDurationSpeedMultiplier(1.0, 0.5) - 2.0) < 0.0001, "A 0.5 speed multiplier should double double wait durations.");
     Assert(Math.Abs(SpeedScaleMath.ApplyDurationSpeedMultiplier(1.0, 0.0) - 1.0) < 0.0001, "Invalid zero multipliers should leave durations unchanged.");
@@ -284,7 +367,7 @@ static void TestMaterializeNativePackage()
 
         var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory, "subdir");
 
-        Assert(File.Exists(Path.Combine(result.PackageRoot, "Sts2Speed.speed.txt")), "Native staging package should include a text multiplier file.");
+        Assert(File.Exists(Path.Combine(result.PackageRoot, RuntimeSettingsLoader.RuntimeConfigFileName)), "Native staging package should include a json runtime config file.");
         Assert(File.Exists(Path.Combine(result.PackageRoot, "sts2-speed-skeleton.dll")), "Native staging package should include the pck-matching managed payload.");
         Assert(!File.Exists(Path.Combine(result.PackageRoot, "mod_manifest.json")), "Native staging package should keep mod_manifest.json inside the generated pck rather than as a loose file.");
         Assert(!File.Exists(Path.Combine(result.PackageRoot, "README.native.txt")), "Native staging package should not ship documentation files into the live mods directory.");
@@ -297,7 +380,7 @@ static void TestMaterializeNativePackage()
     }
 }
 
-static void TestNativePackageSharedMultiplier()
+static void TestNativePackageJsonConfig()
 {
     var root = CreateTempDirectory();
     try
@@ -311,16 +394,22 @@ static void TestNativePackageSharedMultiplier()
             },
             Settings = SpeedModSettings.Defaults with
             {
-                SpineTimeScale = 3.0,
-                QueueWaitScale = 3.0,
-                EffectDelayScale = 3.0,
+                BaseSpeed = 3.0,
+                SpineSpeed = 1.1,
+                QueueSpeed = 0.9,
+                EffectSpeed = 0.8,
+                CombatUiSpeed = 1.2,
+                CombatVfxSpeed = 1.3,
             },
         };
 
         var result = SpeedModEntryPoint.MaterializeNativePackage(configuration, configuration.GamePaths.ArtifactsRoot, AppContext.BaseDirectory, "flat");
-        var sharedSpeed = File.ReadAllText(Path.Combine(result.PackageRoot, "Sts2Speed.speed.txt")).Trim();
+        var configJson = File.ReadAllText(Path.Combine(result.PackageRoot, RuntimeSettingsLoader.RuntimeConfigFileName));
+        var runtimeConfig = System.Text.Json.JsonSerializer.Deserialize<SpeedModSettings>(configJson, SettingsLoader.JsonOptions);
 
-        Assert(sharedSpeed == "3", $"Expected packaged shared multiplier to be 3 but received '{sharedSpeed}'.");
+        Assert(runtimeConfig is not null, "Expected packaged runtime config to deserialize.");
+        Assert(Math.Abs(runtimeConfig!.BaseSpeed - 3.0) < 0.0001, "Expected packaged runtime config to preserve baseSpeed.");
+        Assert(Math.Abs(runtimeConfig.CombatVfxSpeed - 1.3) < 0.0001, "Expected packaged runtime config to preserve combatVfxSpeed.");
     }
     finally
     {

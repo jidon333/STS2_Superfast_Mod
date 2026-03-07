@@ -1,10 +1,10 @@
 # 남은 훅과 위험도
 
-이 문서는 현재 모드가 왜 `spineTimeScale`, `queueWaitScale`, `effectDelayScale`까지만 구현되어 있고, 왜 `CombatManager` / `ActionExecutor` 계열 훅을 아직 붙이지 않았는지 설명한다.
+이 문서는 현재 모드가 왜 `spineSpeed`, `queueSpeed`, `effectSpeed` 축 위주로 구현되어 있고, 왜 `CombatManager` / `ActionExecutor` 계열 훅을 아직 붙이지 않았는지 설명한다.
 
 핵심 요약은 다음과 같다.
 
-1. `effectDelayScale`는 현재 실제 후크가 있지만, 생각보다 "자주 맞는 지점"이 아닐 가능성이 높다.
+1. `effectSpeed`는 현재 실제 후크가 있지만, 생각보다 "자주 맞는 지점"이 아닐 가능성이 높다.
 2. `CombatManager.WaitForActionThenEndTurn`, `WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`는 단순 대기 함수가 아니라 전투 동기화 게이트에 가깝다.
 3. `ActionExecutor.ExecuteActions`는 액션 큐의 중심 루프라서, 잘못 건드리면 자연스러움보다 soft lock 위험이 먼저 올라간다.
 
@@ -23,7 +23,7 @@
 
 공통점은 둘 다 "원래 의미가 시간/속도 인자"라는 점이다. 그래서 Prefix에서 인자만 바꿔도 상대적으로 안전하다.
 
-## 2. `effectDelayScale`가 실전에서 잘 안 보이는 이유
+## 2. `effectSpeed`가 실전에서 잘 안 보이는 이유
 
 초기에는 `CombatState.GodotTimerTask(double timeSec)`가 전투 중 각종 이펙트 지연을 광범위하게 담당할 거라고 예상했다.
 
@@ -45,12 +45,12 @@ private async Task GodotTimerTask(double timeSec)
 
 그래서 현재 증상은 자연스럽다.
 
-- 설정은 `effectDelayScale=2.0`으로 정상 로드된다.
+- 설정은 `effectSpeed=1.0`, `baseSpeed=2.0` 조합으로 정상 로드된다.
 - 하지만 실제 플레이 로그에서는 `effect delay scale applied`가 자주 안 찍힐 수 있다.
 
 결론:
 
-- `effectDelayScale`는 "완전히 죽은 설정"은 아니다.
+- `effectSpeed`는 "완전히 죽은 설정"은 아니다.
 - 다만 현재 후크 하나만으로는 체감 대부분을 설명하지 못할 가능성이 높다.
 
 ## 3. 왜 `CombatManager.WaitForActionThenEndTurn`를 안 붙였는가

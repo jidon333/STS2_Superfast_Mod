@@ -25,6 +25,22 @@ public static class SpeedScaleMath
         return scaled < 0f ? 0f : (float)scaled;
     }
 
+    public static double ApplyFrameDeltaSpeedMultiplier(double value, double multiplier)
+    {
+        if (!IsFinite(multiplier) || multiplier <= Epsilon)
+        {
+            return value;
+        }
+
+        var scaled = value * multiplier;
+        if (!IsFinite(scaled))
+        {
+            return value;
+        }
+
+        return scaled < 0.0 ? 0.0 : scaled;
+    }
+
     public static float ApplyDurationSpeedMultiplier(float value, double multiplier)
     {
         return (float)ApplyDurationSpeedMultiplier((double)value, multiplier);

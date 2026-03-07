@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace Sts2Speed.Core.Configuration;
 
@@ -6,15 +7,23 @@ public sealed record RuntimeSpeedSettings
 {
     public string ModDirectory { get; init; } = string.Empty;
 
-    public string SharedSpeedFilePath { get; init; } = string.Empty;
+    public string ConfigPath { get; init; } = string.Empty;
+
+    public string LegacySpeedFilePath { get; init; } = string.Empty;
 
     public bool Enabled { get; init; }
 
-    public double SpineTimeScale { get; init; } = 2.0;
+    public double BaseSpeed { get; init; } = 3.0;
 
-    public double QueueWaitScale { get; init; } = 2.0;
+    public double SpineSpeed { get; init; } = 3.0;
 
-    public double EffectDelayScale { get; init; } = 2.0;
+    public double QueueSpeed { get; init; } = 3.0;
+
+    public double EffectSpeed { get; init; } = 3.0;
+
+    public double CombatUiSpeed { get; init; } = 3.0;
+
+    public double CombatVfxSpeed { get; init; } = 3.0;
 
     public bool CombatOnly { get; init; } = true;
 
@@ -25,43 +34,61 @@ public sealed record RuntimeSpeedSettings
 
 public static class RuntimeSettingsLoader
 {
+    public const string RuntimeConfigFileName = "Sts2Speed.config.json";
+    public const string LegacySpeedFileName = "Sts2Speed.speed.txt";
+
     public static RuntimeSpeedSettings Load(string modDirectory)
     {
-        var sharedSpeedFilePath = Path.Combine(modDirectory, "Sts2Speed.speed.txt");
+        var configPath = Path.Combine(modDirectory, RuntimeConfigFileName);
+        var legacySpeedFilePath = Path.Combine(modDirectory, LegacySpeedFileName);
         var warnings = new List<string>();
         var sources = new List<string>();
+        var settings = SpeedModSettings.Defaults;
+
+        var documentSettings = TryReadRuntimeConfig(configPath, warnings);
+        if (documentSettings is not null)
+        {
+            settings = settings.With(documentSettings);
+            sources.Add(RuntimeConfigFileName);
+        }
+
+        var legacySharedSpeed = TryReadLegacySharedSpeed(legacySpeedFilePath, warnings);
+        if (legacySharedSpeed.HasValue && documentSettings is null)
+        {
+            settings = settings with
+            {
+                BaseSpeed = legacySharedSpeed.Value,
+                Enabled = !IsApproximately(legacySharedSpeed.Value, 1.0),
+            };
+            sources.Add(LegacySpeedFileName);
+            warnings.Add($"Loaded legacy fallback from {LegacySpeedFileName}. Prefer {RuntimeConfigFileName} for flat speed tuning.");
+        }
+        else if (legacySharedSpeed.HasValue)
+        {
+            warnings.Add($"Ignored {LegacySpeedFileName} because {RuntimeConfigFileName} is present.");
+        }
+
         var environment = ReadRelevantEnvironment();
         var environmentOverrides = EnvironmentOverrideReader.Read(environment);
-        var settings = SpeedModSettings.Defaults.With(environmentOverrides.Settings);
-
         warnings.AddRange(environmentOverrides.Warnings);
         if (environmentOverrides.AppliedOverrideNames.Count > 0)
         {
+            settings = settings.With(environmentOverrides.Settings);
             sources.Add("environment");
-        }
-
-        var sharedMultiplier = TryReadSharedMultiplier(sharedSpeedFilePath, warnings);
-        if (sharedMultiplier.HasValue)
-        {
-            sources.Add("Sts2Speed.speed.txt");
-            settings = ApplySharedMultiplierFallback(settings, sharedMultiplier.Value, environmentOverrides.AppliedOverrideNames);
-        }
-
-        if (!environmentOverrides.AppliedOverrideNames.Contains(EnvironmentOverrideNames.Enabled, StringComparer.OrdinalIgnoreCase)
-            && ShouldImplicitlyEnable(settings, sharedMultiplier, environmentOverrides.AppliedOverrideNames))
-        {
-            settings = settings with { Enabled = true };
-            sources.Add("implicit-enable");
         }
 
         return new RuntimeSpeedSettings
         {
             ModDirectory = modDirectory,
-            SharedSpeedFilePath = sharedSpeedFilePath,
+            ConfigPath = configPath,
+            LegacySpeedFilePath = legacySpeedFilePath,
             Enabled = settings.Enabled,
-            SpineTimeScale = settings.SpineTimeScale,
-            QueueWaitScale = settings.QueueWaitScale,
-            EffectDelayScale = settings.EffectDelayScale,
+            BaseSpeed = settings.BaseSpeed,
+            SpineSpeed = settings.EffectiveSpineSpeed,
+            QueueSpeed = settings.EffectiveQueueSpeed,
+            EffectSpeed = settings.EffectiveEffectSpeed,
+            CombatUiSpeed = settings.EffectiveCombatUiSpeed,
+            CombatVfxSpeed = settings.EffectiveCombatVfxSpeed,
             CombatOnly = settings.CombatOnly,
             Sources = sources.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Warnings = warnings,
@@ -73,13 +100,40 @@ public static class RuntimeSettingsLoader
         return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
             [EnvironmentOverrideNames.Enabled] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.Enabled),
-            [EnvironmentOverrideNames.SpineTimeScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.SpineTimeScale),
-            [EnvironmentOverrideNames.QueueWaitScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.QueueWaitScale),
-            [EnvironmentOverrideNames.EffectDelayScale] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.EffectDelayScale),
+            [EnvironmentOverrideNames.BaseSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.BaseSpeed),
+            [EnvironmentOverrideNames.CombatOnly] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.CombatOnly),
+            [EnvironmentOverrideNames.SpineSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.SpineSpeed),
+            [EnvironmentOverrideNames.QueueSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.QueueSpeed),
+            [EnvironmentOverrideNames.EffectSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.EffectSpeed),
+            [EnvironmentOverrideNames.CombatUiSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.CombatUiSpeed),
+            [EnvironmentOverrideNames.CombatVfxSpeed] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.CombatVfxSpeed),
+            [EnvironmentOverrideNames.LegacySpineFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacySpineFactor),
+            [EnvironmentOverrideNames.LegacyQueueWaitFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyQueueWaitFactor),
+            [EnvironmentOverrideNames.LegacyEffectDelayFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyEffectDelayFactor),
+            [EnvironmentOverrideNames.LegacyCombatUiDeltaFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyCombatUiDeltaFactor),
+            [EnvironmentOverrideNames.LegacyCombatVfxDeltaFactor] = Environment.GetEnvironmentVariable(EnvironmentOverrideNames.LegacyCombatVfxDeltaFactor),
         };
     }
 
-    private static double? TryReadSharedMultiplier(string path, ICollection<string> warnings)
+    private static PartialSpeedModSettings? TryReadRuntimeConfig(string path, ICollection<string> warnings)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<PartialSpeedModSettings>(File.ReadAllText(path), SettingsLoader.JsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            warnings.Add($"Ignored {path}: {exception.Message}");
+            return null;
+        }
+    }
+
+    private static double? TryReadLegacySharedSpeed(string path, ICollection<string> warnings)
     {
         if (!File.Exists(path))
         {
@@ -100,46 +154,6 @@ public static class RuntimeSettingsLoader
 
         warnings.Add($"Ignored {path}: expected invariant floating-point number but received '{raw}'.");
         return null;
-    }
-
-    private static SpeedModSettings ApplySharedMultiplierFallback(
-        SpeedModSettings settings,
-        double sharedMultiplier,
-        IReadOnlyCollection<string> appliedOverrides)
-    {
-        var partial = new PartialSpeedModSettings
-        {
-            SpineTimeScale = appliedOverrides.Contains(EnvironmentOverrideNames.SpineTimeScale, StringComparer.OrdinalIgnoreCase)
-                ? null
-                : sharedMultiplier,
-            QueueWaitScale = appliedOverrides.Contains(EnvironmentOverrideNames.QueueWaitScale, StringComparer.OrdinalIgnoreCase)
-                ? null
-                : sharedMultiplier,
-            EffectDelayScale = appliedOverrides.Contains(EnvironmentOverrideNames.EffectDelayScale, StringComparer.OrdinalIgnoreCase)
-                ? null
-                : sharedMultiplier,
-        };
-
-        return settings.With(partial);
-    }
-
-    private static bool ShouldImplicitlyEnable(
-        SpeedModSettings settings,
-        double? sharedMultiplier,
-        IReadOnlyCollection<string> appliedOverrides)
-    {
-        if (sharedMultiplier.HasValue && !IsApproximately(sharedMultiplier.Value, 1.0))
-        {
-            return true;
-        }
-
-        return appliedOverrides.Any(name =>
-                name is EnvironmentOverrideNames.SpineTimeScale
-                    or EnvironmentOverrideNames.QueueWaitScale
-                    or EnvironmentOverrideNames.EffectDelayScale)
-            && (!IsApproximately(settings.SpineTimeScale, 1.0)
-                || !IsApproximately(settings.QueueWaitScale, 1.0)
-                || !IsApproximately(settings.EffectDelayScale, 1.0));
     }
 
     private static bool IsApproximately(double left, double right)

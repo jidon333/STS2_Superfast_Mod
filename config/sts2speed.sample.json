@@ -7,10 +7,13 @@
     "artifactsRoot": "artifacts"
   },
   "settings": {
-    "enabled": false,
-    "spineTimeScale": 2.0,
-    "queueWaitScale": 2.0,
-    "effectDelayScale": 2.0,
-    "combatOnly": true
+    "enabled": true,
+    "baseSpeed": 3.0,
+    "spineSpeed": 1.0,
+    "queueSpeed": 1.0,
+    "effectSpeed": 1.0,
+    "combatUiSpeed": 1.0,
+    "combatVfxSpeed": 1.0,
+    "combatOnly": true,
   }
 }

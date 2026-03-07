@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Sts2Speed.Core.Configuration;
 
 public sealed record WorkspaceConfiguration
@@ -88,24 +90,56 @@ public sealed record PartialGamePathOptions
     public string? ArtifactsRoot { get; init; }
 }
 
+public sealed record LegacySpeedGroupSettings
+{
+    public double? Spine { get; init; }
+
+    public double? QueueWait { get; init; }
+
+    public double? EffectDelay { get; init; }
+
+    public double? CombatUiDelta { get; init; }
+
+    public double? CombatVfxDelta { get; init; }
+}
+
 public sealed record SpeedModSettings
 {
     public bool Enabled { get; init; }
 
-    public double SpineTimeScale { get; init; }
-
-    public double QueueWaitScale { get; init; }
-
-    public double EffectDelayScale { get; init; }
+    public double BaseSpeed { get; init; }
 
     public bool CombatOnly { get; init; }
 
+    public double SpineSpeed { get; init; } = 1.0;
+
+    public double QueueSpeed { get; init; } = 1.0;
+
+    public double EffectSpeed { get; init; } = 1.0;
+
+    public double CombatUiSpeed { get; init; } = 1.0;
+
+    public double CombatVfxSpeed { get; init; } = 1.0;
+
+    [JsonIgnore]
+    public double EffectiveSpineSpeed => BaseSpeed * SpineSpeed;
+
+    [JsonIgnore]
+    public double EffectiveQueueSpeed => BaseSpeed * QueueSpeed;
+
+    [JsonIgnore]
+    public double EffectiveEffectSpeed => BaseSpeed * EffectSpeed;
+
+    [JsonIgnore]
+    public double EffectiveCombatUiSpeed => BaseSpeed * CombatUiSpeed;
+
+    [JsonIgnore]
+    public double EffectiveCombatVfxSpeed => BaseSpeed * CombatVfxSpeed;
+
     public static SpeedModSettings Defaults { get; } = new SpeedModSettings
     {
-        Enabled = false,
-        SpineTimeScale = 2.0,
-        QueueWaitScale = 2.0,
-        EffectDelayScale = 2.0,
+        Enabled = true,
+        BaseSpeed = 3.0,
         CombatOnly = true,
     };
 
@@ -119,11 +153,19 @@ public sealed record SpeedModSettings
         return this with
         {
             Enabled = partial.Enabled ?? Enabled,
-            SpineTimeScale = partial.SpineTimeScale ?? SpineTimeScale,
-            QueueWaitScale = partial.QueueWaitScale ?? QueueWaitScale,
-            EffectDelayScale = partial.EffectDelayScale ?? EffectDelayScale,
+            BaseSpeed = partial.BaseSpeed ?? BaseSpeed,
             CombatOnly = partial.CombatOnly ?? CombatOnly,
+            SpineSpeed = ResolveLegacyOrNew(partial.SpineSpeed, partial.Groups?.Spine, SpineSpeed),
+            QueueSpeed = ResolveLegacyOrNew(partial.QueueSpeed, partial.Groups?.QueueWait, QueueSpeed),
+            EffectSpeed = ResolveLegacyOrNew(partial.EffectSpeed, partial.Groups?.EffectDelay, EffectSpeed),
+            CombatUiSpeed = ResolveLegacyOrNew(partial.CombatUiSpeed, partial.Groups?.CombatUiDelta, CombatUiSpeed),
+            CombatVfxSpeed = ResolveLegacyOrNew(partial.CombatVfxSpeed, partial.Groups?.CombatVfxDelta, CombatVfxSpeed),
         };
+    }
+
+    private static double ResolveLegacyOrNew(double? updatedValue, double? legacyValue, double currentValue)
+    {
+        return updatedValue ?? legacyValue ?? currentValue;
     }
 }
 
@@ -131,13 +173,21 @@ public sealed record PartialSpeedModSettings
 {
     public bool? Enabled { get; init; }
 
-    public double? SpineTimeScale { get; init; }
-
-    public double? QueueWaitScale { get; init; }
-
-    public double? EffectDelayScale { get; init; }
+    public double? BaseSpeed { get; init; }
 
     public bool? CombatOnly { get; init; }
+
+    public double? SpineSpeed { get; init; }
+
+    public double? QueueSpeed { get; init; }
+
+    public double? EffectSpeed { get; init; }
+
+    public double? CombatUiSpeed { get; init; }
+
+    public double? CombatVfxSpeed { get; init; }
+
+    public LegacySpeedGroupSettings? Groups { get; init; }
 }
 
 public sealed record SettingsLoadResult

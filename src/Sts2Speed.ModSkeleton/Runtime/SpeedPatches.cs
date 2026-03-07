@@ -89,3 +89,65 @@ internal static class CombatStateTimerPatch
         }
     }
 }
+
+[HarmonyPatch]
+internal static class CombatUiDeltaPatch
+{
+    [HarmonyTargetMethods]
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (var candidate in new[]
+                 {
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Combat.NTargetingArrow", "_Process", typeof(double)),
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Combat.NIntent", "_Process", typeof(double)),
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Combat.NStarCounter", "_Process", typeof(double)),
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Combat.NEnergyCounter", "_Process", typeof(double)),
+                 })
+        {
+            if (candidate is not null)
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    [HarmonyPrefix]
+    private static void Prefix(ref double delta)
+    {
+        if (RuntimePatchContext.TryApplyCombatUiDelta(ref delta))
+        {
+            RuntimePatchContext.LogAppliedOnce("combat-ui-delta", $"combat ui delta scale applied. effective delta={delta:0.###}");
+        }
+    }
+}
+
+[HarmonyPatch]
+internal static class CombatVfxDeltaPatch
+{
+    [HarmonyTargetMethods]
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (var candidate in new[]
+                 {
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Vfx.NBezierTrail", "_Process", typeof(double)),
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Vfx.NCardTrail", "_Process", typeof(double)),
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Vfx.NDamageNumVfx", "_Process", typeof(double)),
+                     RuntimePatchContext.TryResolveMethod("MegaCrit.Sts2.Core.Nodes.Vfx.NHealNumVfx", "_Process", typeof(double)),
+                 })
+        {
+            if (candidate is not null)
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    [HarmonyPrefix]
+    private static void Prefix(ref double delta)
+    {
+        if (RuntimePatchContext.TryApplyCombatVfxDelta(ref delta))
+        {
+            RuntimePatchContext.LogAppliedOnce("combat-vfx-delta", $"combat vfx delta scale applied. effective delta={delta:0.###}");
+        }
+    }
+}

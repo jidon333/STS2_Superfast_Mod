@@ -1,173 +1,162 @@
-# STS2 네이티브 로드 체인
+# STS2 로드 체인
 
-이 문서는 STS2가 실제로 어떤 순서로 우리 모드를 읽고, 어디서 Harmony 패치가 설치되는지 짧고 구조적으로 정리한다.
+이 문서는 STS2가 현재 모드를 어떤 순서로 읽고, 어디서 Harmony 패치를 설치하는지 현재 기준으로 설명합니다.
 
 ## 1. 게임 시작
 
-게임 초기화 과정에서 `ModManager.Initialize()`가 호출된다.
+게임 초기화 중 `ModManager.Initialize()`가 실행됩니다.
 
-여기서부터 STS2 내장 네이티브 모드 로더가 동작한다.
+여기서 STS2 내장 모드 로더가 동작합니다.
 
 ## 2. `mods` 폴더 스캔
 
-로더는 게임 설치 폴더 아래 `mods` 디렉토리를 연다.
+로더는 게임 설치 경로 아래 `mods` 폴더를 확인합니다.
 
-현재 패키지 이름은 다음 조합을 기준으로 맞춰져 있다.
+현재 패키지 기준 파일:
 
 - `sts2-speed-skeleton.pck`
 - `sts2-speed-skeleton.dll`
+- `Sts2Speed.Core.dll`
+- `Sts2Speed.config.json`
 
 ## 3. `.pck` basename과 `.dll` 매칭
 
-로더는 `.pck` basename을 구한 뒤, 같은 basename의 `.dll`을 찾는다.
+STS2는 `.pck` basename과 같은 이름의 `.dll`을 찾습니다.
 
-즉 이름이 어긋나면 로드되지 않는다.
-
-현재는 반드시 다음 짝이 맞아야 한다.
+즉:
 
 - `sts2-speed-skeleton.pck`
 - `sts2-speed-skeleton.dll`
 
-## 4. `.pck` 마운트와 `mod_manifest.json`
+이 둘의 basename이 맞아야 합니다.
 
-로더는 `.pck`를 마운트한 뒤 `res://mod_manifest.json`을 읽는다.
+## 4. `.pck` 내부 manifest 확인
 
-이 manifest는 최소한 다음 정보를 가져야 한다.
+로더는 `.pck`를 마운트한 뒤 `res://mod_manifest.json`을 읽습니다.
 
-```json
-{
-  "pck_name": "sts2-speed-skeleton",
-  "name": "STS2 Speed Skeleton",
-  "author": "jidon + Codex",
-  "description": "Non-invasive animation and wait acceleration scaffold for Slay the Spire 2.",
-  "version": "0.1.0-skeleton"
-}
-```
+중요한 건 `pck_name`이 `.pck` basename과 일치해야 한다는 점입니다.
 
-가장 중요한 규칙:
+## 5. 메인 DLL 로드
 
-- `pck_name`은 `.pck` basename과 같아야 한다
-- `.pck` 확장자는 넣지 않는다
+manifest 검사가 끝나면 게임이 `sts2-speed-skeleton.dll`을 자기 프로세스 안에 로드합니다.
 
-## 5. DLL 로드
-
-manifest 검사가 끝나면 게임이 matching DLL을 자기 프로세스 안으로 로드한다.
-
-즉 여기서 별도 인젝터는 없다.
-
-현재 이 단계의 실제 payload는 `sts2-speed-skeleton.dll`이다.
+이 단계에서 별도 인젝터는 없습니다.
 
 ## 6. 추가 DLL resolve
 
-문제는 모드 본체 DLL이 참조하는 추가 DLL까지 게임이 자동으로 찾아주지는 않는다는 점이었다.
+메인 DLL은 `Sts2Speed.Core.dll`을 참조합니다.
 
-그래서 모드 본체 안에서 아래 resolver를 설치했다.
-
-```csharp
-[ModuleInitializer]
-internal static void Initialize()
-{
-    AppDomain.CurrentDomain.AssemblyResolve += ResolveFromModDirectory;
-    AssemblyLoadContext.Default.Resolving += ResolveFromModDirectory;
-}
-```
+게임이 이 참조 DLL을 자동으로 찾지 못할 수 있으므로, 모드 DLL 안에서 resolver를 등록합니다.
 
 역할:
 
-- `mods` 폴더 기준으로 `Sts2Speed.Core.dll` 같은 추가 의존성을 찾는다
+- 현재 모드 디렉토리 기준으로 추가 DLL 검색
+- `Sts2Speed.Core.dll` 로드 보조
 
 ## 7. Harmony 패치 등록
 
-현재 모드 DLL에는 `ModInitializerAttribute`를 쓰지 않는다.
+현재 모드 DLL은 `ModInitializerAttribute` 대신 `Harmony.PatchAll` 경로를 탑니다.
 
-그 대신 STS2 로더가 DLL을 읽은 뒤 `Harmony.PatchAll(assembly)`를 호출한다.
-
-즉 로드 체인은 다음과 같이 이해하면 된다.
+즉 로드 체인은 대략 이렇습니다.
 
 ```text
 게임 로더
-  -> DLL 로드
+  -> mods 폴더 스캔
+  -> .pck 발견
+  -> matching .dll 로드
+  -> resolver 등록
   -> Harmony.PatchAll
   -> [HarmonyPatch] 클래스 스캔
-  -> Prefix 설치
+  -> Prefix 패치 설치
 ```
 
 ## 8. 런타임 설정 로드
 
-패치 타깃을 resolve 하는 시점에 런타임 설정도 같이 읽는다.
+패치 로직은 실행 중 현재 모드 폴더의 설정을 읽습니다.
 
-설정 우선순위:
+현재 우선순위:
 
 1. `STS2_SPEED_*` 환경 변수
-2. `Sts2Speed.speed.txt`
-3. 기본값
+2. `Sts2Speed.config.json`
+3. legacy fallback `Sts2Speed.speed.txt`
+4. 기본값
 
-현재 기본 `Sts2Speed.speed.txt` 값은 `2.0`이다.
+현재 권장 설정 파일은:
 
-## 9. 실제 패치 지점
+- `Sts2Speed.config.json`
 
-현재 설치되는 패치는 다음 네 곳이다.
+형태:
 
-- `MegaAnimationState.SetTimeScale`
-- `MegaTrackEntry.SetTimeScale`
-- `Cmd.CustomScaledWait`
-- `CombatState.GodotTimerTask`
-
-실제 동작 의미:
-
-- `spineTimeScale` -> 애니메이션 속도 직접 배속
-- `queueWaitScale` -> wait duration 축소
-- `effectDelayScale` -> timer duration 축소
-
-즉 지금은 "전역 time_scale"을 바꾸는 방식이 아니라 **개별 메서드 인자 조정형 패치**다.
-
-## 10. 왜 여기서 멈췄는가
-
-현재 남아 있는 후보:
-
-- `CombatManager.WaitForActionThenEndTurn`
-- `CombatManager.WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`
-- `ActionExecutor.ExecuteActions`
-
-이 셋은 이름만 보면 더 빠르게 만들기 좋아 보이지만, 디컴파일 결과 실제로는 단순 duration helper가 아니라 전투 큐 동기화와 action completion 루프에 가깝다.
-
-즉 현재는 "시간 인자"에 가까운 메서드만 패치하고, "동기화 조건"에 가까운 메서드는 일부러 보류했다.
-
-`effectDelayScale` 역시 실제로는 `CombatState.GodotTimerTask(double)` 한 지점만 잡고 있기 때문에, 설정은 살아 있어도 전투 모든 연출을 대표하지는 않는다.
-
-자세한 해설은 `PENDING_HOOKS_AND_RISKS.md`에 있다.
-
-## 11. 모드 저장 경로 분리
-
-모드가 하나라도 로드되면 게임은 `modded/profileN` 쪽 저장 경로를 사용한다.
-
-이 때문에:
-
-- vanilla 진행과 modded 진행이 분리되고
-- modded 쪽이 비어 있으면 새 프로필처럼 보이며
-- 필요 시 `profileN -> modded/profileN` 복구가 필요하다
-
-복구는 다음 명령으로 자동화했다.
-
-```powershell
-dotnet run --project src/Sts2Speed.Tool -- sync-modded-profile
+```json
+{
+  "enabled": true,
+  "baseSpeed": 3.0,
+  "spineSpeed": 1.0,
+  "queueSpeed": 1.0,
+  "effectSpeed": 1.0,
+  "combatUiSpeed": 1.0,
+  "combatVfxSpeed": 1.0,
+  "combatOnly": true
+}
 ```
 
-## 12. 로그 확인 포인트
+## 9. 실제 패치 적용 지점
 
-게임 로그에서 확인할 수 있는 신호:
+현재 패치 범위:
 
-- `Found mod pck file ...`
-- `Loading assembly DLL sts2-speed-skeleton.dll`
-- `Finished mod initialization for 'STS2 Speed Skeleton'`
+- Spine
+  - `MegaAnimationState.SetTimeScale`
+  - `MegaTrackEntry.SetTimeScale`
+- wait / timer
+  - `Cmd.CustomScaledWait`
+  - `CombatState.GodotTimerTask`
+- combat UI delta
+  - `NTargetingArrow._Process`
+  - `NIntent._Process`
+  - `NStarCounter._Process`
+  - `NEnergyCounter._Process`
+- combat VFX delta
+  - `NBezierTrail._Process`
+  - `NCardTrail._Process`
+  - `NDamageNumVfx._Process`
+  - `NHealNumVfx._Process`
+
+사용자 의미는 항상 같습니다.
+
+- 숫자가 클수록 빠름
+
+내부 계산만 항목별로 다릅니다.
+
+- 애니메이션 / delta -> `* effectiveSpeed`
+- wait / delay -> `/ effectiveSpeed`
+
+## 10. 저장 경로 분리
+
+모드가 로드되면 STS2는 진행 데이터를 `modded/profileN` 쪽에 분리해 저장합니다.
+
+그래서:
+
+- vanilla 진행은 남아 있는데
+- modded 프로필만 비어 있으면
+- 게임이 초기화된 것처럼 보일 수 있습니다
+
+이 경우 `profileN -> modded/profileN` 복구가 필요할 수 있습니다.
+
+## 11. 로그 확인
+
+게임 로그에서 확인할 신호:
+
+- `.pck` 발견
+- matching DLL 로드
+- mod initialization 완료
 - `--- RUNNING MODDED! ---`
 
-모드 자체 진단 로그:
+모드 자체 런타임 로그:
 
-- `mods\sts2speed.runtime.log`
+- `mods\\sts2speed.runtime.log`
 
-여기에는 다음 정보가 남는다.
+여기서 확인 가능한 것:
 
-- 초기 설정 로드
-- 설정 변경 감지
+- 설정 로드
+- 설정 refresh
 - 패치 적용 1회 로그
