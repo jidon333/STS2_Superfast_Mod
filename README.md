@@ -9,6 +9,10 @@
 
 이 저장소 안에서 GitHub 배포용 최소 패키지는 `release/STS2_Superfast_Mod` 폴더에 들어 있습니다.
 
+## Demo
+
+![STS2 3x Demo](sts2_3x.gif)
+
 ## 한국어 안내
 
 ### 포함 파일
