@@ -42,6 +42,12 @@ STS2 Superfast Mod 설치 안내
 
 4. 게임을 실행하세요.
 
+설정 변경 방법은 두 가지입니다.
+- `mods\Sts2Speed.config.json` 파일을 직접 수정
+- 게임 안 `설정 -> 모드 -> STS2 Speed Skeleton` 화면에서 직접 조절
+
+처음에는 `baseSpeed`만 바꾸고 나머지는 그대로 두는 편이 가장 무난합니다.
+
 추가 튜닝 설명:
 - 더 자세한 설명은 저장소의 `docs\TUNING_KO.md` 문서를 참고하세요.
 

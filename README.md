@@ -88,6 +88,28 @@ D:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods
 - 나머지 `...Speed`는 처음에는 모두 `1.0` 그대로 두는 편이 좋습니다.
 - 실제 플레이 기준으로도 `baseSpeed`만 올리고 나머지를 `1.0`으로 두는 조합이 가장 자연스럽게 느껴질 가능성이 높습니다.
 
+### 설정 변경 방법
+
+속도 설정은 아래 두 방법 중 편한 쪽으로 바꿀 수 있습니다.
+
+1. `mods\Sts2Speed.config.json` 파일을 직접 편집
+2. 게임 안에서 `설정 -> 모드 -> STS2 Speed Skeleton` 화면에서 직접 조절
+
+보통은 아래처럼 쓰면 됩니다.
+
+- 가장 자연스러운 시작점:
+  - `baseSpeed`만 올리고 나머지는 `1.0` 유지
+- 세밀 튜닝이 필요할 때만:
+  - `spineSpeed`, `queueSpeed`, `effectSpeed`, `combatUiSpeed`, `combatVfxSpeed` 조절
+
+### 인게임 설정 화면
+
+인게임에서도 같은 값을 바로 바꿀 수 있습니다.
+
+![In-game Mod Settings 1](ingame1.png)
+
+![In-game Mod Settings 2](ingame2.png)
+
 ### 자세한 튜닝 설명
 
 각 항목이 실제로 무엇을 의미하는지, 어떤 상황에서 어느 값을 올리거나 내려야 하는지는 아래 문서를 참고해 주세요.
@@ -193,6 +215,15 @@ Rules:
 - All numbers in the JSON mean `higher = faster`.
 
 For most users, changing only `baseSpeed` is enough.
+
+### How To Change The Values
+
+You can change the speed in either of these two ways:
+
+1. Edit `mods\Sts2Speed.config.json` directly
+2. Open `Settings -> Mods -> STS2 Speed Skeleton` in-game and change the values there
+
+For the most natural result, start by changing only `baseSpeed` and keep the other `...Speed` values at `1.0`.
 
 ## Development Docs
 

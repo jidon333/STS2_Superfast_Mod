@@ -23,6 +23,13 @@
 - 내부 구현은 항목마다 다르지만, 사용자 기준 규칙은 하나로 통일되어 있습니다.
 - 실제 적용 배속은 `baseSpeed x 각 항목 Speed` 입니다.
 
+설정 변경 방법:
+
+- `mods\Sts2Speed.config.json` 파일을 직접 편집
+- 게임 안 `설정 -> 모드 -> STS2 Speed Skeleton` 화면에서 직접 조절
+
+두 방법은 같은 값을 바꾸는 인터페이스라고 생각하면 됩니다.
+
 예시:
 
 - `baseSpeed = 3`, `spineSpeed = 1` -> Spine 계열은 3배속
