@@ -13,6 +13,14 @@
 
 ![STS2 3x Demo](sts2_3x.gif)
 
+## In-game Settings
+
+You can also change the same values directly in-game from `Settings -> Mods -> STS2 Speed Skeleton`.
+
+![In-game Mod Settings 1](ingame1.png)
+
+![In-game Mod Settings 2](ingame2.png)
+
 ## 한국어 안내
 
 ### 포함 파일
@@ -101,14 +109,6 @@ D:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods
   - `baseSpeed`만 올리고 나머지는 `1.0` 유지
 - 세밀 튜닝이 필요할 때만:
   - `spineSpeed`, `queueSpeed`, `effectSpeed`, `combatUiSpeed`, `combatVfxSpeed` 조절
-
-### 인게임 설정 화면
-
-인게임에서도 같은 값을 바로 바꿀 수 있습니다.
-
-![In-game Mod Settings 1](ingame1.png)
-
-![In-game Mod Settings 2](ingame2.png)
 
 ### 자세한 튜닝 설명
 
