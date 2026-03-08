@@ -151,3 +151,27 @@ internal static class CombatVfxDeltaPatch
         }
     }
 }
+
+[HarmonyPatch]
+internal static class ModdingScreenConfigUiPatch
+{
+    [HarmonyTargetMethods]
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        var method = RuntimePatchContext.TryResolveMethod(
+            "MegaCrit.Sts2.Core.Nodes.Screens.ModdingScreen.NModInfoContainer",
+            "Fill",
+            AccessTools.TypeByName("MegaCrit.Sts2.Core.Modding.Mod") ?? typeof(object));
+
+        if (method is not null)
+        {
+            yield return method;
+        }
+    }
+
+    [HarmonyPostfix]
+    private static void Postfix(object __instance, object mod)
+    {
+        InGameConfigUi.RefreshForSelection(__instance, mod);
+    }
+}

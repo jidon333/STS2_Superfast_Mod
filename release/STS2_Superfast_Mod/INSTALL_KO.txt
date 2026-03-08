@@ -1,18 +1,18 @@
 STS2 Superfast Mod 설치 안내
 
-1. Slay the Spire 2 설치 폴더에 mods 폴더를 만드세요.
-   예:
+1. Slay the Spire 2 설치 폴더에 `mods` 폴더를 만드세요.
+
    D:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods
 
-2. 아래 4개 파일을 mods 폴더에 넣으세요.
+2. 아래 4개 파일을 `mods` 폴더에 넣으세요.
    - sts2-speed-skeleton.pck
    - sts2-speed-skeleton.dll
    - Sts2Speed.Core.dll
    - Sts2Speed.config.json
 
-3. Sts2Speed.config.json을 메모장으로 열고 속도를 조절하세요.
+3. `Sts2Speed.config.json`을 메모장으로 열고 속도를 조절하세요.
 
-기본 예시:
+기본 추천값:
 {
   "enabled": true,
   "baseSpeed": 3.0,
@@ -24,24 +24,28 @@ STS2 Superfast Mod 설치 안내
   "combatOnly": true
 }
 
-설명:
+핵심 설명:
 - baseSpeed: 전체 기본 배속
-- spineSpeed, queueSpeed, effectSpeed, combatUiSpeed, combatVfxSpeed: 항목별 계수
-- 실제 속도 = baseSpeed x 각 Speed 값
+- spineSpeed: Spine 애니메이션 계열 계수
+- queueSpeed: 행동 사이 wait / 처리 템포 계수
+- effectSpeed: timer 기반 effect delay 계수
+- combatUiSpeed: 조준 / intent / 카운터 같은 전투 UI 계수
+- combatVfxSpeed: 데미지 숫자 / trail 같은 전투 VFX 계수
+- combatOnly: 전투 중에만 적용할지 여부
 
 중요:
-- 이 파일의 숫자는 전부 클수록 빨라집니다.
-- queueSpeed, effectSpeed도 내부적으로는 duration을 줄이는 방향으로 처리되어서 사용자는 숫자를 올리면 더 빨라진다고 이해하면 됩니다.
-- 초보자는 baseSpeed만 바꾸고 나머지 Speed 값은 1.0 그대로 두면 됩니다.
-
-예:
-- 3.0 = 현재 기본 추천값
-- 2.0 = 비교적 가벼운 배속
-- 1.0 = 바닐라와 비슷함
+- JSON 숫자는 전부 "클수록 빠름" 입니다.
+- 실제 적용 배속은 `baseSpeed x 각 항목 Speed` 입니다.
+- 초보자는 `baseSpeed`만 바꾸고 나머지는 `1.0`으로 두는 것을 추천합니다.
+- 기본 추천 시작값은 `baseSpeed = 3.0` 입니다.
+- 가장 자연스러운 시작점도 `baseSpeed`만 조절하고 나머지는 `1.0`으로 두는 쪽입니다.
 
 4. 게임을 실행하세요.
 
+추가 튜닝 설명:
+- 더 자세한 설명은 저장소의 `docs\TUNING_KO.md` 문서를 참고하세요.
+
 주의:
 - 모드를 처음 켜면 진행 데이터가 비어 보일 수 있습니다.
-- 이 경우 AppData\Roaming\SlayTheSpire2\steam\<계정>\profile1 내용을 modded\profile1로 복사하면 됩니다.
-- 게임 실행 중에는 mods 폴더 파일을 교체하지 않는 편이 안전합니다.
+- 이 경우 `AppData\Roaming\SlayTheSpire2\steam\<계정>\profile1` 내용을 `modded\profile1`로 복사하면 됩니다.
+- 게임 실행 중에는 `mods` 폴더 파일을 교체하지 않는 편이 안전합니다.

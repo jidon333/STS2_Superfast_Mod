@@ -182,6 +182,11 @@ internal static class RuntimePatchContext
         WriteLine(detail);
     }
 
+    public static void LogInfo(string detail)
+    {
+        WriteLine(detail);
+    }
+
     private static DateTime GetConfigWriteUtc()
     {
         var configWriteUtc = File.Exists(Path.Combine(ModDirectory, RuntimeSettingsLoader.RuntimeConfigFileName))

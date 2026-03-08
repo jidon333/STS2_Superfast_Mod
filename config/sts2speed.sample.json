@@ -14,6 +14,6 @@
     "effectSpeed": 1.0,
     "combatUiSpeed": 1.0,
     "combatVfxSpeed": 1.0,
-    "combatOnly": true,
+    "combatOnly": true
   }
 }

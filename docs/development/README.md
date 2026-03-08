@@ -9,15 +9,19 @@
 3. `LOAD_CHAIN.md`
    - STS2가 `mods` 폴더의 파일을 어떤 순서로 읽고 패치를 적용하는지 정리합니다.
 4. `SPEED_SEMANTICS.md`
-   - 현재 설정 모델인 flat `baseSpeed + ...Speed`와 “클수록 빠름” 규칙을 설명합니다.
+   - 현재 설정 모델이 flat `baseSpeed + ...Speed` 구조로 어떻게 해석되는지 설명합니다.
 5. `PENDING_HOOKS_AND_RISKS.md`
-   - 왜 일부 후보 훅을 아직 보류했는지 위험도 관점에서 설명합니다.
+   - 왜 어떤 훅은 아직 보류했는지, 위험도 관점에서 설명합니다.
 6. `WORKLOG.md`
    - 시행착오를 시간순으로 정리한 작업 로그입니다.
 7. `DETAILED_INVESTIGATION_LOG.md`
-   - 실제 조사/가설/반례/결론을 가장 상세하게 기록한 문서입니다.
+   - 실제 조사, 가설, 실패, 피벗 과정을 상세하게 기록한 문서입니다.
+
+추가로 사용자 튜닝 설명은 개발 문서 폴더 밖의 아래 문서를 참고하면 됩니다.
+
+- `docs\TUNING_KO.md`
 
 주의:
 
-- `WORKLOG.md`, `DETAILED_INVESTIGATION_LOG.md`에는 과거 단계의 `Sts2Speed.speed.txt` 기반 실험 기록이 남아 있습니다.
-- 현재 배포 기준의 설정 파일은 `Sts2Speed.config.json` 입니다.
+- `WORKLOG.md`, `DETAILED_INVESTIGATION_LOG.md`에는 과거 단계의 `Sts2Speed.speed.txt` 기반 기록이 일부 남아 있습니다.
+- 현재 배포 기준 설정 파일은 `Sts2Speed.config.json` 입니다.
