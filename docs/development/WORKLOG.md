@@ -1,50 +1,38 @@
 # STS2 Speed Mod 작업 기록
 
-이 문서는 실제 조사와 시행착오를 순서대로 기록한다. 성공한 경로뿐 아니라 틀린 가정과 실패 원인도 같이 남긴다.
+이 문서는 조사와 구현 과정을 시간순으로 압축해서 기록합니다.
 
-더 세밀한 조사 순서, 사용한 명령, 판단 근거까지 보려면 `DETAILED_INVESTIGATION_LOG.md`를 같이 본다.
+더 세부적인 근거와 실패 원인까지 보려면 `DETAILED_INVESTIGATION_LOG.md`를 같이 보면 됩니다.
 
-## 1. 초기 가정
+## 1. 초기 가설
 
-처음에는 두 가지를 동시에 열어두고 시작했다.
+처음에는 두 가지를 동시에 열어두고 시작했습니다.
 
-1. STS2가 공식 모딩 경로를 아직 완전히 열지 않았을 수 있다.
-2. 그래도 내부에는 이미 `ModManager`, `ModManifest`, `SteamWorkshop`, `ModsDirectory` 같은 코드 흔적이 있을 수 있다.
+1. STS2가 native mod route를 이미 갖고 있을 수 있다
+2. 그렇지 않으면 GUMM 같은 외부 bootstrap이 필요할 수 있다
 
-그래서 초반 전략은 “GUMM으로 먼저 진입을 검증하고, 동시에 내장 모드 구조를 캐는 것”이었다.
+그래서 초반에는:
 
-## 2. 설치본과 세이브 경로 확인
+- save / settings 조사
+- DLL 메타데이터 조사
+- GUMM bootstrap 실험
 
-먼저 실제 설치/저장 경로를 확인했다.
+을 병행했습니다.
 
-- 게임 설치: `D:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2`
-- 사용자 데이터: `C:\Users\jidon\AppData\Roaming\SlayTheSpire2`
+## 2. 설치 / 저장 경로 확인
 
-이 단계에서 다음을 확인했다.
+먼저 게임과 사용자 데이터 경로를 확인하고, save / config 파일이 JSON 텍스트라는 점을 확인했습니다.
 
-- 엔진은 Godot 4.5.1
-- 실행 구조는 `.NET 9`
-- 저장 파일은 JSON 텍스트
+이 단계에서:
 
-## 3. 세이브 구조 조사
+- snapshot / restore 설계
+- modded profile 분리 가정
 
-`prefs.save`, `settings.save`, `progress.save`, `current_run.save`를 확인하면서 백업 설계를 세웠다.
+이 정리됐습니다.
 
-중요한 관찰:
+## 3. 후보 훅 탐색
 
-- `current_run.save`는 항상 있는 파일이 아니었다.
-- `.backup` 파일이 별도로 존재했다.
-- `settings.save` 안에 `mod_settings`가 있었다.
-
-이 때문에 snapshot/restore는 “파일이 없으면 오류”가 아니라 “missing 상태도 정상”으로 처리하도록 설계했다.
-
-## 4. 후보 메서드 이름 찾기
-
-속도 모드를 만들려면 어디를 건드려야 하는지부터 알아야 했다.
-
-처음엔 저장 파일에서 `fast_mode` 같은 키를 확인했고, 그 다음 DLL 메타데이터와 타입명을 뒤졌다.
-
-그 과정에서 잡힌 후보는 다음과 같았다.
+초기 후보로 다음 메서드를 뽑았습니다.
 
 - `MegaAnimationState.SetTimeScale`
 - `MegaTrackEntry.SetTimeScale`
@@ -53,32 +41,19 @@
 - `CombatState.GodotTimerTask`
 - `ActionExecutor.ExecuteActions`
 
-이 목록은 `KnownPatchTargets.cs`에 정리했다.
+여기서 방향은 "전역 time scale"보다 "선택적 leaf hook"으로 굳어졌습니다.
 
-## 5. PowerShell reflection 시도와 실패
+## 4. PowerShell reflection 실패
 
-처음엔 PowerShell에서 직접 `sts2.dll`을 reflection으로 읽어서 필요한 타입을 확인하려고 했다.
+`sts2.dll`을 PowerShell reflection으로 바로 읽으려 했지만 `.NET 9`와 의존성 구조 때문에 효율이 나쁘다고 판단했습니다.
 
-하지만 여기서 막혔다.
+이후부터는 ILSpy / 디컴파일 중심으로 방향을 바꿨습니다.
 
-막힌 이유:
+## 5. GUMM 실험
 
-- 타깃 런타임이 `.NET 9`
-- 종속 DLL 수가 많음
-- `MetadataLoadContext`를 바로 쓰기엔 환경 준비가 번거로움
+내장 로더 규칙이 확정되기 전에는 GUMM으로 먼저 bootstrap을 검증했습니다.
 
-결론은 명확했다. reflection만으로 밀기보다는 디컴파일 도구를 쓰는 게 빠르다.
-
-## 6. GUMM 가설 채택
-
-당시에는 네이티브 모드 경로가 확정되지 않았으므로, Godot 외부 로더인 GUMM을 먼저 시험했다.
-
-이유:
-
-- Godot 게임이라 `override.cfg` 기반 씬 오버라이드가 가능하다
-- 모드가 실제로 실행되는지 빠르게 확인할 수 있다
-
-그래서 다음 구조를 먼저 만들었다.
+흐름:
 
 - `override.cfg`
 - `GUMM_mod_loader.tscn`
@@ -86,352 +61,161 @@
 - `mod.gd`
 - `GUMM_mod.gd`
 
-## 7. GUMM 첫 실패
+처음엔 parse error가 났고, 이후 공식 GUMM base script를 맞춰 넣어 부팅과 로그까지는 성공했습니다.
 
-첫 GUMM 실험은 절반만 성공했다.
+이 단계의 결론:
 
-로그에는 `Loading mod: STS2 Speed Skeleton`이 찍혔지만, 바로 parse error가 났다.
+- GUMM은 유효한 진단 경로
+- 하지만 최종 구현 경로로는 과함
 
-원인:
+## 6. 커뮤니티 배포 형식 확인
 
-- 우리가 만든 최소 `GUMM_mod.gd`에 `get_full_path()` 같은 헬퍼가 없었다
-- `mod.gd`는 그 함수를 기대하고 있었다
+다른 비공식 모드가 `mods + pck + dll + txt` 형태로 배포된다는 점을 보고, native route 가설이 강해졌습니다.
 
-이 실패에서 배운 점:
+## 7. `ModManager` 디컴파일
 
-- “모드가 발견됨”과 “모드가 실제로 실행됨”은 전혀 다른 단계다
+`ModManager`를 디컴파일해서 native 규칙을 확정했습니다.
 
-## 8. GUMM 수정과 실기 성공
+핵심:
 
-이후 GUMM 저장소의 실제 `System/4.x/GUMM_mod.gd`를 패키지에 복사하도록 바꿨다.
-
-그 결과 실기에서 다음이 확인됐다.
-
-- `Loading mod: STS2 Speed Skeleton`
-- bootstrap 로그 출력
-- 메인 메뉴까지 정상 진입
-
-이때 GUMM은 “실행 진입 검증” 역할을 충분히 했다.
-
-## 9. 직접 exe 실행이 틀렸다는 점 확인
-
-처음에는 `SlayTheSpire2.exe`를 직접 실행하기도 했다.
-
-이건 잘못된 경로였다.
-
-문제:
-
-- Steam appID 초기화 실패
-- Steamworks 관련 로그 문제
-
-그래서 이후 모든 실기 테스트는 `steam.exe -applaunch 2868840` 기준으로 바꿨다.
-
-## 10. 네이티브 모드 예시를 보고 방향 전환
-
-커뮤니티에서 본 비공식 모드는 설치법이 매우 단순했다.
-
-- `mods` 폴더 생성
-- `pck`, `dll`, `txt` 파일 복사
-- `txt` 안 숫자를 바꾸면 배속 변경
-
-여기서 강한 단서를 얻었다.
-
-- 이 구조는 GUMM보다 STS2 내장 `mods` 로더에 훨씬 잘 맞는다
-- 따라서 GUMM을 최종 경로로 볼 이유가 줄었다
-
-## 11. ILSpy 도입
-
-이 시점부터는 추측보다 디컴파일이 더 효율적이라고 판단했다.
-
-그래서 `ilspycmd`를 로컬 도구로 설치하고 `sts2.dll`을 직접 디컴파일했다.
-
-가장 중요한 수확은 `ModManager`였다.
-
-## 12. `ModManager` 디컴파일로 로더 규칙 확정
-
-`ModManager`를 디컴파일해서 다음 규칙을 확인했다.
-
-- 게임은 `<game dir>\\mods`를 연다
-- `.pck`를 재귀적으로 찾는다
-- 같은 basename의 `.dll`을 찾는다
-- `ProjectSettings.LoadResourcePack`을 호출한다
-- `res://mod_manifest.json`이 반드시 필요하다
-- `pck_name`은 확장자 없는 basename과 같아야 한다
-- `ModInitializerAttribute`가 없으면 `Harmony.PatchAll`을 호출한다
-
-이 시점부터는 네이티브 `mods + pck + dll + txt`가 사실상 정답이라고 볼 수 있었다.
-
-## 13. 모드 동의 플래그 확인
-
-다음으로 디컴파일한 것은 `ModSettings`와 mod warning UI였다.
-
-여기서 `settings.save` 안의 `mod_settings.mods_enabled`가 실제 게이트라는 걸 확인했다.
-
-처음 네이티브 `.pck`를 넣었을 때 로더가 모드를 건너뛴 이유도 여기서 설명됐다.
-
-## 14. `.pck`를 어떻게 만들지 고민
-
-처음에는 `.pck`가 없는 것이 가장 큰 blocker였다.
-
-시도한 방법은 두 가지였다.
-
-1. Godot `PCKPacker`
-2. 공식 `--export-pack`
-
-## 15. `PCKPacker` 시도와 실패
-
-우선 headless Godot 프로젝트를 만들어 `PCKPacker`로 `.pck`를 생성했다.
-
-겉보기에는 성공했지만, STS2 로더는 이 파일을 읽고도 `mod manifest가 없다`고 판단했다.
-
-공식 Godot 쪽에서 직접 inspect 하면 `res://mod_manifest.json`이 보였기 때문에, STS2 로더가 기대하는 형태와 raw `PCKPacker` 출력이 완전히 같지는 않다는 결론을 냈다.
-
-## 16. 공식 `--export-pack` 경로 확인
-
-그래서 Godot 4.5.1 공식 콘솔 에디터를 내려받아 `--export-pack "Windows Desktop"`를 시험했다.
-
-이 경로는 실제로 동작했다.
-
-그리고 여기서 두 번째 중요한 오류를 잡았다.
-
-오류:
-
-- `PCK name in mod manifest ... does not match`
-
-원인:
-
-- `pck_name`에 `.pck` 확장자를 넣고 있었다
-
-수정:
-
-- `pck_name = Path.GetFileNameWithoutExtension(pckName)`
-
-## 17. 네이티브 모드 실기 첫 성공
-
-manifest 수정 후 다시 배치했을 때, 로그는 다음 단계까지 갔다.
-
+- `mods` 폴더 스캔
 - `.pck` 발견
-- DLL 로드
-- `Harmony.PatchAll` 호출
-- `Finished mod initialization`
-- `--- RUNNING MODDED! ---`
+- 같은 basename의 `.dll` 탐색
+- `mod_manifest.json` 필요
+- `pck_name` 검증
+- `Harmony.PatchAll`
 
-그리고 저장 경로가 `modded/profile1`로 분리되는 것까지 확인했다.
+이 시점부터 최종 경로는 native route로 확정됐습니다.
 
-## 18. 첫 실제 payload 추가
+## 8. `.pck` 생성 시행착오
 
-이제 로더가 확실히 살아 있으므로 첫 payload를 넣었다.
+처음에는 `PCKPacker`를 직접 써서 `.pck`를 만들었지만, STS2 로더가 기대하는 형식과 맞지 않아 실패했습니다.
 
-현재 넣은 첫 패치는 다음과 같다.
+이후 Godot 공식 `--export-pack` 경로로 전환했고, 이것이 실제로 성공했습니다.
+
+추가로 `pck_name`은 확장자 없는 basename과 일치해야 한다는 점도 이 과정에서 확인했습니다.
+
+## 9. 첫 native 로드 성공
+
+native `.pck`와 matching DLL 로드, `Harmony.PatchAll`, `--- RUNNING MODDED! ---`까지 확인했습니다.
+
+이로써 GUMM은 더 이상 최종 구현 경로가 아니게 됐습니다.
+
+## 10. 첫 payload
+
+처음 payload는 가장 안전한 지점만 선택했습니다.
+
+- Spine 배속
+- explicit wait
+- timer helper
+
+즉:
 
 - `MegaAnimationState.SetTimeScale`
 - `MegaTrackEntry.SetTimeScale`
 - `Cmd.CustomScaledWait`
 - `CombatState.GodotTimerTask`
 
-설정 소스는 다음 두 가지다.
+## 11. 추가 의존 DLL 문제 해결
 
-- `STS2_SPEED_*` 환경 변수
-- `Sts2Speed.speed.txt`
+메인 DLL이 로드돼도 `Sts2Speed.Core.dll`을 못 찾는 문제가 있었습니다.
 
-## 19. 추가 DLL 의존성 문제
+이 문제는 assembly resolver를 추가해서 해결했습니다.
 
-여기서 또 한 번 막혔다.
+## 12. modded profile 복구
 
-`sts2-speed-skeleton.dll`은 로드됐지만, 그 DLL이 참조하는 `Sts2Speed.Core.dll`은 못 찾았다.
+모드를 켰더니 진행이 초기화된 것처럼 보였고, 조사 결과 실제 원인은 `profileN`과 `modded/profileN` 분리였습니다.
 
-로그에는 `Could not load file or assembly 'Sts2Speed.Core'`가 찍혔다.
+해결:
 
-원인:
+- 수동 복구
+- 이후 `sync-modded-profile` 자동화
 
-- STS2 로더는 “모드 엔트리 DLL”은 로드하지만, 거기서 이어지는 추가 DLL probing은 자동으로 안 해줬다
+## 13. speed semantics 버그 발견
 
-수정:
+초기 구현에서 `2.0`을 넣으면:
 
-- `ModAssemblyResolver.cs` 추가
-- 모드 폴더 기준 assembly resolve 등록
+- animation은 빨라지고
+- wait / timer는 오히려 길어지는
 
-## 20. 런타임 설정 로그 추가
+버그가 있었습니다.
 
-게임 로그만으로는 우리 내부 상태를 보기 불편했다.
+이후 `SpeedScaleMath`를 만들어:
 
-그래서 `mods\\sts2speed.runtime.log` 파일을 별도로 남기도록 바꿨다.
+- animation / delta는 `*`
+- duration은 `/`
 
-이 로그는 다음을 기록한다.
+로 통일했습니다.
 
-- 초기 설정
-- 설정 변경 감지
-- 패치가 실제로 한 번이라도 적용된 순간
+## 14. flat config 스키마 도입
 
-## 21. 저장 데이터가 사라진 것처럼 보인 문제
+초기 설정은 `speed.txt` 하나였고, 이후 grouped JSON을 거쳐 최종적으로 flat `baseSpeed + ...Speed` 구조로 정리했습니다.
 
-이건 실제로 겪은 문제였다.
+핵심 원칙:
 
-모드를 켜고 나서 게임이 `modded/profile1`을 보기 시작하는데, 그쪽에 진행 데이터가 없어서 완전히 초기화된 프로필처럼 보였다.
+- 사용자 기준 규칙은 `클수록 빠름`
+- 초보자는 `baseSpeed`만 조절
 
-실제 확인 결과:
+## 15. delta 계열 추가
 
-- vanilla `profile1\\saves\\progress.save` 는 정상
-- `modded\\profile1\\saves\\progress.save` 는 사실상 새 프로필 상태
+Spine + wait만으로는 아직 일부가 느리게 느껴져서, 전투 UI / VFX delta 패치를 추가했습니다.
 
-즉 데이터가 증발한 게 아니라 슬롯이 분리된 것이었다.
+추가 대상:
 
-## 22. 실제 복구
+- `NTargetingArrow`
+- `NIntent`
+- `NStarCounter`
+- `NEnergyCounter`
+- `NBezierTrail`
+- `NCardTrail`
+- `NDamageNumVfx`
+- `NHealNumVfx`
 
-복구는 다음 순서로 진행했다.
+## 16. 인게임 설정 UI 추가
 
-1. 기존 `modded/profile1` 백업
-2. `profile1` 전체를 `modded/profile1`에 복제
-3. `progress.save` 해시 비교
+이후 "파일을 열지 않고도 값을 바꿀 수 있으면 좋겠다"는 방향으로 인게임 UI를 붙였습니다.
 
-결과:
+접근:
 
-- source hash와 destination hash가 동일해졌다
-- 진행 데이터가 modded 슬롯으로 복구됐다
+- `NModInfoContainer.Fill` Postfix
+- 선택된 모드가 우리 모드일 때만 패널 표시
+- `+ / -` 버튼과 toggle 버튼으로 config 저장
 
-## 23. 복구 자동화
+초기 문제:
 
-같은 문제가 반복되지 않게 `sync-modded-profile` 명령을 추가했다.
+- 레이아웃 겹침
+- 값은 저장되는데 UI 숫자 즉시 갱신이 안 보임
+- generic reflection method를 잘못 집는 예외
+- 계산용 `effective*` 값이 config에 저장되는 버그
 
-이 명령은 다음을 수행한다.
+수정 후:
 
-1. 기존 `modded/profileN` 전체를 `artifacts/profile-sync-backups/<timestamp>/` 아래에 백업
-2. `profileN` 내용을 `modded/profileN`으로 미러링
-3. 보고서 JSON 작성
+- 설명 텍스트 숨김
+- 값 표시 즉시 갱신
+- editable 필드만 JSON 저장
+- live 파일과 인게임 UI 둘 다 정상 동작
 
-즉 앞으로는 수동 복사 대신 툴로 처리할 수 있다.
+## 17. 문서와 배포 정리
 
-## 24. 현재 실기 상태
+마지막 단계에서는:
 
-현재 실기에서 확정된 것은 다음이다.
+- 사용자 README 정리
+- 튜닝 문서 정리
+- 배포 폴더 정리
+- 인게임 설정 스크린샷 추가
+- 기본 추천값 `baseSpeed = 3`
 
-- 네이티브 로더가 실제로 작동한다
-- `.pck` 생성 경로는 `--export-pack`로 확정됐다
-- `Sts2Speed.speed.txt` 값이 런타임 설정 로그에 실제로 반영된다
-- 추가 DLL 의존성 문제는 assembly resolver로 해결됐다
-- vanilla 진행을 modded 프로필로 복구할 수 있다
+를 반영했습니다.
 
-아직 남은 것은 다음이다.
+## 18. 현재 결론
 
-- 실제 전투에서 `spine time scale applied` / `queue wait scale applied` 로그가 찍히는지 확인
-- 체감 강도를 조정할지 판단
+현재 모드는:
 
-## 25. 배속 의미 버그 발견
+- native loader 경로 확정
+- 실전 사용 가능
+- 인게임 설정 가능
+- 문서화 완료
 
-첫 payload를 넣은 뒤 설명 문서를 쓰면서 중요한 버그를 발견했다.
+상태입니다.
 
-초기 구현은 `Sts2Speed.speed.txt = 2.0`일 때:
-
-- Spine 애니메이션은 `x 2.0`
-- queue wait / effect delay도 그대로 `x 2.0`
-
-으로 처리하고 있었다.
-
-문제는 wait / timer 계열은 "속도"가 아니라 "지속시간"이라서, 이 계산은 사용자 기대와 반대로 동작한다는 점이다.
-
-즉:
-
-- 애니메이션은 빨라지지만
-- 대기시간은 길어진다
-
-이건 "배속을 올리면 전체가 빨라져야 한다"는 사용자 의미와 맞지 않았다.
-
-## 26. speed semantics 수정
-
-이 문제를 고치기 위해 공통 계산 로직을 분리했다.
-
-추가한 파일:
-
-- `src/Sts2Speed.Core/Configuration/SpeedScaleMath.cs`
-
-핵심 규칙:
-
-- animation = `value * multiplier`
-- duration = `value / multiplier`
-
-즉 현재 `2.0`의 의미는 다음과 같이 고정됐다.
-
-- 애니메이션 2배속
-- wait / timer 절반 길이
-
-이후 `RuntimePatchContext`는 직접 곱셈하지 않고 `SpeedScaleMath`를 호출하도록 바꿨다.
-
-## 27. self-test 추가
-
-이 버그가 다시 생기지 않게 self-test를 추가했다.
-
-테스트 포인트:
-
-- `2.0` speed multiplier는 float wait duration을 `0.5`로 줄여야 한다
-- `0.5` speed multiplier는 double wait duration을 `2.0`으로 늘려야 한다
-- 잘못된 `0.0` multiplier는 duration을 그대로 둬야 한다
-
-즉 지금은 semantics가 코드와 테스트 양쪽에서 고정되어 있다.
-
-## 28. 기본 배속을 2.0으로 상향
-
-원래 생성 기본값은 `1.0`이었다.
-
-이후 사용자 요청에 맞춰:
-
-- 생성되는 `Sts2Speed.speed.txt` 기본값
-- live `mods` 폴더의 `Sts2Speed.speed.txt`
-
-둘 다 `2.0`으로 올렸다.
-
-따라서 현재 기준 기본 배포 상태는 "2배속 의도"다.
-
-## 29. 현재 판단
-
-지금 시점의 결론은 명확하다.
-
-- GUMM은 유효한 진단 경로였다
-- 최종 경로는 STS2 내장 네이티브 로더다
-- `.pck`는 공식 Godot export로 만들 수 있다
-- 첫 실제 payload는 이미 라이브 로더까지 통과했다
-- 저장 데이터가 사라진 것처럼 보이는 문제는 `profileN`과 `modded/profileN` 분리 문제다
-- speed semantics는 수정돼서 `2.0`의 의미가 현재 일관적이다
-- 다음 단계는 플레이 기반 검증과 추가 후보 훅 확장이다
-
-## 30. 남은 후보 훅 재검토
-
-이후 다시 한 번 `CombatManager`, `ActionExecutor`, `CombatState`를 디컴파일해 남은 과제를 재평가했다.
-
-결론은 예상보다 보수적이었다.
-
-- `CombatState.GodotTimerTask`는 `SceneTree.CreateTimer()`를 감싼 utility helper에 가까웠다.
-- `CombatManager.WaitForActionThenEndTurn`는 action completion과 turn-end phase 연결부였다.
-- `WaitUntilQueueIsEmptyOrWaitingOnNonPlayerDrivenAction`는 큐 상태 동기화에 가까웠다.
-- `ActionExecutor.ExecuteActions`는 액션 큐 코어 루프였다.
-
-즉 처음 이름만 보고 기대했던 것처럼 "남은 대기시간을 단순히 더 줄일 수 있는 함수들"은 아니었다.
-
-이 재검토 때문에 판단이 바뀌었다.
-
-- `effectDelayScale`는 설정이 살아 있어도 체감 빈도가 낮을 수 있다.
-- `CombatManager` / `ActionExecutor` 계열은 지금 바로 붙이면 자연스러움보다 회귀 위험이 크다.
-
-그래서 이번에는 해당 훅을 추가하지 않고, 왜 보류했는지를 문서로 남기는 방향을 택했다.
-
-## 31. 실제 사용 경로 기준 코드 정리
-
-마지막으로 저장소 안에 남아 있던 초기 scaffold를 정리했다.
-
-정리 대상:
-
-- 사용되지 않던 설정
-  - `fastModeOverride`
-  - `animationScale`
-  - `preserveGameSettings`
-  - `verboseLogging`
-- 예전 GUMM 전용 툴링
-- 예전 skeleton dry-run 패키징 코드
-- 관련 self-test와 CLI 명령
-
-정리 후 기준:
-
-- 런타임 설정 표면은 `enabled`, `spineTimeScale`, `queueWaitScale`, `effectDelayScale`, `combatOnly`만 남음
-- CLI는 네이티브 `mods + pck + dll + txt` 경로와 백업/복구 위주로 단순화됨
-- GUMM은 코드가 아니라 문서 안의 조사 이력으로만 남음
-
-즉 지금 저장소는 "역사적으로 여러 경로를 시험한 작업장"이면서도, 실제 실행 가능한 코드 표면은 최종 경로 기준으로 많이 정리된 상태다.
+남은 일은 "필수 구현"보다 "선택적 개선"에 가깝습니다.

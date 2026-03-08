@@ -1,152 +1,140 @@
 # STS2 모드 로딩 방식 비교
 
-이 문서는 지금까지 검토한 세 가지 방식의 원리, 장단점, 현재 판단을 정리한다.
+이 문서는 이번 작업에서 검토한 세 가지 로딩 방식을 비교하고, 왜 현재 구조를 최종 경로로 채택했는지 설명합니다.
 
-비교 대상은 다음 세 가지다.
+비교 대상:
 
 1. `GUMM` 단독 방식
-2. `GUMM bootstrap + C# payload` 방식
-3. STS2 내장 `mods + pck + dll + txt` 방식
+2. `GUMM bootstrap + C# payload`
+3. STS2 native `mods + pck + dll + json`
 
-결론부터 말하면 현재 최종 목표는 `3번`이다. `1번`은 진단과 우회 경로로 유효했고, `2번`은 중간 단계로는 합리적이었지만 지금은 우선순위가 내려갔다.
+결론부터 말하면 현재 최종 경로는 `3번`입니다.
 
 ## 1. GUMM 단독 방식
 
 ### 원리
 
-GUMM은 Godot 기본 제공 기능이 아니라, Godot의 `override.cfg` 메커니즘을 이용하는 외부 로더다.
+GUMM은 Godot 기본 기능이 아니라, Godot의 `override.cfg`와 start scene override를 활용하는 외부 로더입니다.
 
-동작 순서는 다음과 같다.
+동작 순서:
 
-1. 게임 폴더에 `override.cfg`를 둔다.
-2. `run/main_scene`를 원래 씬 대신 `GUMM_mod_loader.tscn`로 바꾼다.
-3. GUMM 로더가 `mod_list`에 등록된 디렉토리의 `mod.cfg`, `mod.gd`를 읽는다.
-4. 각 모드 초기화가 끝나면 원래 게임 씬 `res://scenes/game.tscn`로 넘긴다.
+1. `override.cfg`로 main scene을 GUMM loader scene으로 변경
+2. GUMM이 `mod.cfg`, `mod.gd`를 읽음
+3. 초기화가 끝나면 원래 게임 scene으로 넘김
 
-### 이 저장소에서 실제로 한 일
+### 이 저장소에서 실제로 했던 것
 
 - `override.cfg` 작성
 - `GUMM_mod_loader.tscn` 배치
-- `mod.cfg`, `mod.gd`, `GUMM_mod.gd`가 포함된 패키지 생성
+- `mod.cfg`, `mod.gd`, `GUMM_mod.gd` 포함 패키지 생성
 - Steam `-applaunch 2868840`로 실제 부팅
 - 로그에서 `Loading mod: STS2 Speed Skeleton` 확인
 
 ### 장점
 
-- 외부 스크립트가 실제로 게임 시작 시점에 실행되는지 빠르게 검증할 수 있다.
-- 리소스 교체, 초기 스크립트 실행, 진단용 로그 삽입에 적합하다.
-- 공식 내장 모딩 경로가 불명확할 때 우회 경로로 쓰기 좋다.
+- 모드 코드가 실제로 실행되는지 빨리 검증하기 좋음
+- 리소스 교체 / 진단용 bootstrap으로 유용
+- 내장 로더 규칙이 불명확할 때 우회 진입 경로가 됨
 
 ### 단점
 
-- 우리가 실제로 건드리고 싶은 대상은 대부분 managed C# 메서드다.
-- GUMM의 기본 강점은 GDScript와 리소스 레이어지, Harmony 기반 C# 메서드 패치는 아니다.
-- 구조가 `Godot script -> bridge -> managed payload` 형태가 되기 쉬워서 불필요하게 한 층 더 거친다.
+- 최종 속도 payload는 결국 managed C# 메서드 패치가 핵심
+- GUMM은 GDScript / resource layer가 중심
+- 결국 bridge가 하나 더 생겨 구조가 불필요하게 복잡해짐
+- STS2 내장 native 경로가 확인된 뒤에는 유지할 이유가 크게 줄어듦
 
-### 현재 판단
+### 현재 평가
 
-지금은 “정석 구현 경로”가 아니라 “진단/부트스트랩 경로”로 유지한다.
+유효했던 진단 단계였지만, 최종 구현 경로는 아님.
 
 ## 2. GUMM bootstrap + C# payload
 
 ### 원리
 
-이 방식은 GUMM을 최종 구현으로 쓰지 않고, “모드 진입점 확보”에만 사용한다.
+GUMM은 단지 진입과 bootstrap만 맡고, 실제 속도 변경은 managed C# payload가 담당하는 방식입니다.
 
-흐름은 다음과 같다.
+즉:
 
-1. GUMM이 `mod.gd`를 로드한다.
-2. `mod.gd`가 설정 파일이나 외부 DLL 경로를 준비한다.
-3. 실제 속도 변경은 managed C# payload가 담당한다.
+- 진입은 `mod.gd`
+- 본체는 Harmony DLL
 
-즉 GUMM은 부트스트랩이고, 본체는 DLL 패치다.
+### 이 방식이 한때 유력했던 이유
 
-### 왜 한때 유력했는가
-
-- GUMM 경로가 실기에서 먼저 살아 있음을 확인했다.
-- 속도 모드의 본체는 `MegaAnimationState.SetTimeScale`, `Cmd.CustomScaledWait` 같은 C# 메서드 후킹이 더 자연스럽다.
-- 그래서 “진입은 GUMM, 실제 속도 변경은 C#” 구조가 중간 단계로 합리적이었다.
+- GUMM bootstrap은 이미 실기에서 성공했음
+- 우리가 만지고 싶은 대상은 대부분 managed C# 메서드였음
+- 따라서 "진입은 GUMM, payload는 C#" 구조가 중간 단계로 합리적이었음
 
 ### 장점
 
-- GUMM 검증 성과를 버리지 않고 활용할 수 있다.
-- GDScript와 managed patch 역할을 분리할 수 있다.
-- 내장 모드 경로가 막혀 있을 때 fallback으로 좋다.
+- GUMM 실험 결과를 버리지 않음
+- 진입과 payload를 분리 가능
+- native 규칙이 아직 불확실할 때는 좋은 타협점
 
 ### 단점
 
-- 최종 경로가 명확해진 뒤에는 구조가 이중화된다.
-- 유지보수 포인트가 늘어난다.
-- `override.cfg` 같은 게임 폴더 수정이 계속 필요하다.
+- 최종적으로는 구조가 이중화됨
+- `override.cfg` 같은 게임 루트 변경을 계속 안고 가야 함
+- native route가 이미 확인되면 장점보다 유지비가 커짐
 
-### 현재 판단
+### 현재 평가
 
-내장 네이티브 로더가 실제로 확인된 시점부터 우선순위가 내려갔다. 지금은 fallback 설계로만 남겨둔다.
+과도기 설계로는 유효했지만, 지금은 fallback 이상의 의미는 없음.
 
-## 3. STS2 내장 `mods + pck + dll + txt`
+## 3. STS2 native `mods + pck + dll + json`
 
 ### 원리
 
-이 방식은 게임 자체가 `mods` 폴더를 스캔하고, `.pck`와 `.dll`을 로드하는 구조를 그대로 따른다.
+이 방식은 STS2가 원래 제공하는 native mod loader 규칙을 그대로 따릅니다.
 
-실제 디컴파일로 확인한 규칙은 다음과 같다.
+실제 규칙:
 
-1. 게임은 `<game dir>\\mods`를 연다.
-2. 재귀적으로 `.pck`를 찾는다.
-3. `.pck` basename과 같은 이름의 `.dll`을 찾는다.
-4. `ProjectSettings.LoadResourcePack(...)`로 `.pck`를 마운트한다.
-5. `res://mod_manifest.json`을 읽는다.
-6. manifest의 `pck_name`이 `.pck` basename과 같아야 한다.
-7. `ModInitializerAttribute`가 없으면 로더가 `Harmony.PatchAll(assembly)`를 호출한다.
+1. 게임이 `<game dir>\mods`를 스캔
+2. `.pck`를 발견
+3. 같은 basename의 `.dll`을 찾음
+4. `.pck`를 mount
+5. `res://mod_manifest.json` 확인
+6. `pck_name`과 basename 검증
+7. DLL 로드
+8. `ModInitializerAttribute`가 없으면 `Harmony.PatchAll(assembly)` 호출
 
-### 필요한 파일
+### 현재 배포 표면
 
 - `sts2-speed-skeleton.pck`
 - `sts2-speed-skeleton.dll`
-- `mod_manifest.json` inside pck
-- `Sts2Speed.speed.txt`
-- 추가 의존성이 있다면 같은 폴더의 `.dll`
-
-### 이 저장소에서 실제로 검증한 것
-
-- `.pck`는 Godot 공식 `--export-pack`으로 생성 가능
-- `mods` 폴더에서 실제로 `.pck`를 찾는 로그 확인
-- 매칭 `.dll` 로드 로그 확인
-- `Finished mod initialization` 로그 확인
-- 모드 켠 상태에서 저장 경로가 `modded/profile1`로 분리되는 것 확인
+- `Sts2Speed.Core.dll`
+- `Sts2Speed.config.json`
 
 ### 장점
 
-- 가장 게임 구조에 가깝다.
-- 커뮤니티 배포 예시와 일치한다.
-- GUMM처럼 게임 시작 씬을 가로채지 않아도 된다.
-- 장기적으로 Steam Workshop이 붙더라도 이 구조 위에 배포만 얹힐 가능성이 높다.
+- 현재 게임 구조와 가장 가깝다
+- 커뮤니티 배포 형식과도 맞는다
+- GUMM처럼 별도 scene override가 필요 없다
+- 최종 payload가 같은 런타임 레이어에서 동작한다
+- 현재 인게임 설정 UI도 이 경로 위에서 자연스럽게 붙는다
 
 ### 단점
 
-- loader 규칙을 정확히 맞춰야 한다.
-- 추가 DLL 의존성은 자동으로 안 잡힐 수 있어서 resolver가 필요하다.
-- 게임 패치로 로더 규칙이 바뀌면 바로 영향을 받는다.
+- manifest 규칙을 정확히 맞춰야 한다
+- 추가 DLL dependency resolve를 스스로 처리해야 한다
+- 게임 버전 변화에 더 직접 영향을 받는다
 
-### 현재 판단
+### 현재 평가
 
-최종 구현 방향은 이 방식이다.
+최종 구현 경로.
 
-## 왜 Workshop과 GUMM은 다른가
+## Workshop과의 관계
 
-혼동하기 쉬운 부분이라 분리해서 적는다.
+헷갈리기 쉬운 부분:
 
-- Steam Workshop은 배포 채널이다.
-- GUMM은 로더다.
-- STS2 내장 `mods` 경로도 로더다.
+- Steam Workshop은 배포 채널
+- GUMM은 외부 로더
+- STS2 native `mods` route는 게임 내부 로더
 
-즉 Workshop이 열린다고 해서 GUMM이 필요한 것은 아니다. 오히려 지금까지 확인한 구조를 보면, Workshop은 파일을 내려주고 실제 로딩은 게임 내장 `mods` 시스템이 담당할 가능성이 더 높다.
+즉 Workshop이 붙는다고 해서 GUMM이 필요한 것은 아닙니다.
+오히려 현재 구조상 Workshop이 나중에 붙더라도 "파일을 내려주는 채널"이고, 실제 로딩은 STS2 native route가 맡을 가능성이 더 큽니다.
 
-## 현재 권장 흐름
+## 현재 권장 결론
 
-1. 백업 생성
-2. `build-native-pck`
-3. `deploy-native-package`
-4. `mods\Sts2Speed.speed.txt` 또는 `STS2_SPEED_*`로 배속 설정
-5. 실기 검증
-6. 문제가 생기면 스냅샷 복구
+- 최종 구현: STS2 native `mods + pck + dll + json`
+- 진단 / 역사적 참고: GUMM
+- 더 이상 유지하지 않는 경로: GUMM bootstrap을 전제로 한 최종 설계
