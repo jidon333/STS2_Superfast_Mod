@@ -118,6 +118,30 @@ UI 구현 방식:
 - `Enabled`, `Combat only`는 toggle 버튼
 - 값 저장은 `Sts2Speed.config.json`
 
+조금 더 자세히 보면:
+
+1. `NModInfoContainer.Fill(Mod mod)`가 원래 상세 패널 제목, 설명, 저자, 버전 등을 채웁니다
+2. 그 함수가 끝나면 우리 `Postfix`가 실행됩니다
+3. `InGameConfigUi.RefreshForSelection(__instance, mod)`가 현재 선택된 모드를 검사합니다
+4. 우리 모드가 아니면 주입된 패널을 숨기고 원래 설명 라벨을 다시 보여줍니다
+5. 우리 모드면 `EnsurePanelExists(...)`로 필요한 Control을 최초 1회 생성합니다
+6. `LoadEditableSettings()`가 `Sts2Speed.config.json`을 읽고
+7. `UpdateTexts(...)`가 현재 값을 버튼 텍스트에 반영하고
+8. `UpdateLayout(...)`가 제목 아래 적절한 위치로 패널을 다시 배치합니다
+
+즉 "모드 선택 -> 상세 패널 채움 -> Postfix로 우리 UI 덧붙임"이 실제 호출 순서입니다.
+
+값 변경 흐름도 완전히 분리돼 있습니다.
+
+1. 사용자가 `+ / -` 또는 toggle 버튼 클릭
+2. `InGameConfigUi`가 새 `SpeedModSettings`를 계산
+3. `SaveEditableSettings(...)`가 `Sts2Speed.config.json` 저장
+4. 다음 패치 hit 때 `RuntimePatchContext.GetSettings()`가 write time 변화를 감지
+5. 새 설정을 다시 읽고 `settings refreshed: ...` 로그를 남김
+6. 이후 Prefix들이 새 effective speed로 인자를 조정
+
+즉 인게임 UI는 게임 내부 상태를 직접 바꾸지 않고, 설정 파일을 저장하는 편집기 역할을 합니다.
+
 ## 10. 값 적용 흐름
 
 예를 들어 사용자가 인게임 UI에서 `Base speed`를 올리면:
